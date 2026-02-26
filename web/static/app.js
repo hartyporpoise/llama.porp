@@ -192,7 +192,13 @@ function renderModelDropdown(models) {
 // ── Boot ──────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   initMarkdown();
-  // Sidebar is open by default (HTML has class="conv-sidebar open")
+  // Open sidebar by default on desktop; leave it closed on mobile.
+  if (window.innerWidth >= 768) {
+    const sidebar = document.getElementById('convSidebar');
+    const hamBtn  = document.getElementById('hamBtn');
+    sidebar.classList.add('open');
+    hamBtn.classList.add('active');
+  }
   // Load the most recent conversation if one exists.
   const existing = loadAllConversations();
   if (existing.length > 0) {
