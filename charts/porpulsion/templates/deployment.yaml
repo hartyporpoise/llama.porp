@@ -1,0 +1,143 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "porpulsion.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "porpulsion.labels" . | nindent 4 }}
+spec:
+  # Stateful because of the Ollama model volume — one replica unless you
+  # manage model-cache affinity externally.
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "porpulsion.selectorLabels" . | nindent 6 }}
+  strategy:
+    # Recreate avoids two pods competing over the same PVC on rolling updates.
+    type: Recreate
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "porpulsion.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "porpulsion.serviceAccountName" . }}
+
+      containers:
+
+        # ── Porpulsion (main) ─────────────────────────────────────────────────
+        - name: porpulsion
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}:{{ include "porpulsion.imageTag" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - serve
+            - --ollama-url
+            - {{ include "porpulsion.ollamaUrl" . | quote }}
+            - --port
+            - "8080"
+            {{- if .Values.defaultModel }}
+            - --model
+            - {{ .Values.defaultModel | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: OLLAMA_URL
+              value: {{ include "porpulsion.ollamaUrl" . | quote }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            # Porpulsion's /health checks Ollama — give it up to 3 min to start.
+            failureThreshold: 36
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+        # ── Ollama (sidecar backend) ───────────────────────────────────────────
+        {{- if .Values.ollama.enabled }}
+        - name: ollama
+          image: "{{ .Values.ollama.image.repository }}:{{ .Values.ollama.image.tag }}"
+          imagePullPolicy: {{ .Values.ollama.image.pullPolicy }}
+          ports:
+            - name: ollama
+              containerPort: 11434
+              protocol: TCP
+          env:
+            - name: OLLAMA_TELEMETRY
+              value: "false"
+            {{- with .Values.ollama.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /api/version
+              port: ollama
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /api/version
+              port: ollama
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.ollama.resources | nindent 12 }}
+          volumeMounts:
+            - name: ollama-data
+              mountPath: /root/.ollama
+        {{- end }}
+
+      volumes:
+        - name: ollama-data
+          {{- if and .Values.ollama.enabled .Values.ollama.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "porpulsion.fullname" . }}-ollama
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

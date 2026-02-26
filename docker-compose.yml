@@ -1,0 +1,70 @@
+# ──────────────────────────────────────────────────────────────────────────
+# Porpulsion + Ollama (alpine/ollama) — Docker Compose
+#
+# Quick start:
+#   docker compose up
+#
+# Then open:
+#   http://localhost:8080  — porpulsion UI (main)
+#
+# To set a default model (pre-selected in both UIs):
+#   DEFAULT_MODEL=llama3.2 docker compose up
+# ──────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Ollama: runs the actual model inference ──────────────────────────────
+  ollama:
+    image: alpine/ollama:latest
+    container_name: ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"          # expose Ollama API directly if needed
+    restart: unless-stopped
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: "1.0"
+    healthcheck:
+      # alpine/ollama has no curl/wget — use the ollama CLI itself
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 10s
+
+  # ── Porpulsion A: primary instance on port 8080 ───────────────────────────
+  porpulsion:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: porpulsion:latest
+    container_name: porpulsion
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_URL: "http://ollama:11434"
+    command:
+      - "--ollama-url"
+      - "http://ollama:11434"
+      - "--model"
+      - "${DEFAULT_MODEL:-}"
+      - "--port"
+      - "8080"
+    ports:
+      - "${PORT:-8080}:8080"
+    restart: unless-stopped
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  ollama_data:
+    driver: local

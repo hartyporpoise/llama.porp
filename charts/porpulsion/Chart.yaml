@@ -1,0 +1,14 @@
+apiVersion: v2
+name: porpulsion
+description: Porpulsion — high-performance Ollama proxy with web UI and feature flags
+type: application
+version: 0.0.1
+appVersion: "0.0.0"
+keywords:
+  - llm
+  - ollama
+  - inference
+  - ai
+home: https://github.com/hartyporpoise/porpulsion
+maintainers:
+  - name: hartyporpoise

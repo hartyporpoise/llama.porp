@@ -1,0 +1,90 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Porpulsion Helm values
+# Override any of these with --set or a custom values file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Porpulsion ────────────────────────────────────────────────────────────────
+replicaCount: 1
+
+image:
+  repository: ghcr.io/hartyporpoise/porpulsion
+  pullPolicy: IfNotPresent
+  tag: ""  # defaults to latest
+
+# Default model to pre-select in the UI. Leave empty to let the user pick.
+defaultModel: ""
+
+# Full URL to the Ollama API. Override if you bring your own Ollama instance.
+# When ollama.enabled=true this is auto-set to the in-cluster service.
+ollamaUrl: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "100m"
+    memory: 128Mi
+
+# Extra environment variables injected into the porpulsion container.
+extraEnv: []
+# - name: MY_VAR
+#   value: "value"
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podSecurityContext: {}
+securityContext: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ── Ollama (sidecar) ──────────────────────────────────────────────────────────
+# When enabled, Ollama runs as a sidecar container in the same pod as
+# porpulsion. They share localhost — no inter-pod networking needed.
+# Set enabled=false and ollamaUrl to use an external Ollama instance instead.
+ollama:
+  enabled: true
+
+  image:
+    repository: alpine/ollama
+    pullPolicy: IfNotPresent
+    tag: latest
+
+  # Port Ollama listens on inside the pod (not exposed as a K8s Service).
+  service:
+    port: 11434
+
+  # PersistentVolumeClaim for model storage.
+  persistence:
+    enabled: true
+    storageClass: ""    # leave empty to use cluster default
+    accessMode: ReadWriteOnce
+    size: 30Gi
+
+  # Resource limits for Ollama — models are memory-hungry.
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+
+  # Extra environment variables for Ollama (e.g. OLLAMA_NUM_PARALLEL).
+  extraEnv: []
+  # - name: OLLAMA_NUM_PARALLEL
+  #   value: "1"
+
+  # Node selector / tolerations for GPU nodes.
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}

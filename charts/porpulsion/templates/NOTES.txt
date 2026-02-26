@@ -1,0 +1,23 @@
+Porpulsion has been deployed!
+
+{{- if eq .Values.service.type "NodePort" }}
+  export NODE_PORT=$(kubectl get svc {{ include "porpulsion.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}")
+  export NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo "UI: http://$NODE_IP:$NODE_PORT"
+{{- else }}
+  Port-forward to access the UI locally:
+    kubectl port-forward svc/{{ include "porpulsion.fullname" . }} 8080:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+  Then open: http://localhost:8080
+{{- end }}
+
+{{- if .Values.ollama.enabled }}
+
+  Ollama is running in-cluster at:
+    {{ include "porpulsion.ollamaUrl" . }}
+
+  Pull a model (Ollama runs as a sidecar — exec into the same pod):
+    kubectl exec -n {{ .Release.Namespace }} deploy/{{ include "porpulsion.fullname" . }} -c ollama -- ollama pull llama3.2
+
+{{- else }}
+  Using external Ollama at: {{ .Values.ollamaUrl }}
+{{- end }}

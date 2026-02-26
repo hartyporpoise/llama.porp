@@ -1,0 +1,18 @@
+# Binary (match only root-level binary, not the charts/porpulsion/ directory)
+/porpulsion
+bin/
+
+# Go build cache
+*.test
+*.out
+
+# Environment / secrets
+.env
+.env.*
+
+# Editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo

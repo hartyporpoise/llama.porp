@@ -1,0 +1,22 @@
+{{- if and .Values.ollama.enabled .Values.ollama.persistence.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "porpulsion.fullname" . }}-ollama
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "porpulsion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ollama
+  annotations:
+    # Retain the PVC when the release is deleted so downloaded models survive.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - {{ .Values.ollama.persistence.accessMode }}
+  {{- if .Values.ollama.persistence.storageClass }}
+  storageClassName: {{ .Values.ollama.persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.ollama.persistence.size }}
+{{- end }}
