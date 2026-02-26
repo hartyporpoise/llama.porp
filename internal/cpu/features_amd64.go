@@ -15,10 +15,12 @@ func detectFeatures(t *Topology) {
 	t.HasAVX2 = cpu.X86.HasAVX2
 
 	// F16C — half-precision ↔ single-precision conversion.
-	t.HasF16C = cpu.X86.HasF16C
+	// golang.org/x/sys/cpu does not expose HasF16C; leave false (safe default).
+	t.HasF16C = false
 
 	// FMA — fused multiply-add; required for full AVX2 throughput.
-	t.HasFMA = cpu.X86.HasFMA3
+	// golang.org/x/sys/cpu exposes this as HasFMA (covers FMA3 on x86-64).
+	t.HasFMA = cpu.X86.HasFMA
 
 	// AVX-512 — Skylake-SP (2017) server CPUs, select desktop/laptop chips.
 	// NOT present on most consumer hardware, including many modern Intel/AMD CPUs.
