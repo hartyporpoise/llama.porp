@@ -14,4 +14,9 @@ type Config struct {
 
 	// DefaultModel is the model name to select when the request doesn't specify one.
 	DefaultModel string
+
+	// OllamaEnvDir is the path to a shared volume directory where porpulsion
+	// writes ollama.env and the restart sentinel for the Ollama sidecar wrapper.
+	// Leave empty to disable env-file management (e.g. when using an external Ollama).
+	OllamaEnvDir string
 }

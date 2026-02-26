@@ -101,19 +101,19 @@ func (s *Store) All() []Info {
 		{
 			ID:          FlashAttn,
 			Name:        "Flash Attention",
-			Description: "Enable Flash Attention in Ollama. Computes attention in tiled blocks — O(1) memory instead of O(n²) — dramatically faster at long context lengths (2k+ tokens). Requires Ollama ≥ 0.1.33.",
+			Description: "Enable Flash Attention in Ollama (OLLAMA_FLASH_ATTENTION=1). Computes attention in tiled blocks — O(1) memory instead of O(n²) — dramatically faster at long context lengths (2k+ tokens). ⚠ Requires OLLAMA_ENV_DIR to be set; triggers an Ollama process restart.",
 			Enabled:     s.flags[FlashAttn],
 		},
 		{
 			ID:          MmapWeights,
 			Name:        "Memory-Map Weights (mmap)",
-			Description: "Load model weights via OS mmap instead of reading them into a private buffer. The OS page-cache serves weights directly to Ollama, enabling instant cold-start and shared pages across processes. Pairs well with MLock.",
+			Description: "Keep memory-mapped weights resident via OLLAMA_NOPRUNE=1. The OS page-cache serves weights directly to Ollama, enabling instant cold-start and shared pages across processes. ⚠ Requires OLLAMA_ENV_DIR to be set; triggers an Ollama process restart.",
 			Enabled:     s.flags[MmapWeights],
 		},
 		{
 			ID:          MLockWeights,
 			Name:        "Lock Weights in RAM (mlock)",
-			Description: "Pin model weights into physical RAM so the OS can never swap them to disk. Eliminates page-fault stalls during inference — highest impact when system RAM is under pressure. May require elevated OS limits (ulimit -l unlimited).",
+			Description: "Set OLLAMA_KEEP_ALIVE=24h to keep model weights pinned in memory and prevent eviction. Eliminates reload stalls during inference when system RAM is under pressure. ⚠ Requires OLLAMA_ENV_DIR to be set; triggers an Ollama process restart.",
 			Enabled:     s.flags[MLockWeights],
 		},
 		// ── Footprint Reduction ───────────────────────────────────────────────
@@ -126,7 +126,7 @@ func (s *Store) All() []Info {
 		{
 			ID:          LowVRAM,
 			Name:        "Low VRAM Mode",
-			Description: "Tells Ollama to skip pre-allocated scratch buffers and use streaming attention instead. Reduces peak RAM by 15–25% at a small speed cost. Essential when running near the edge of available memory.",
+			Description: "Sets OLLAMA_NUM_PARALLEL=1 to reduce concurrent memory usage. Limits Ollama to one request at a time to minimise peak RAM — useful when running near the edge of available memory. ⚠ Requires OLLAMA_ENV_DIR to be set; triggers an Ollama process restart.",
 			Enabled:     s.flags[LowVRAM],
 		},
 		{

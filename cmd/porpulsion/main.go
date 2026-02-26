@@ -55,6 +55,8 @@ func main() {
 		"Default model name (e.g. llama3.2)")
 	f.IntVarP(&cfg.Port, "port", "p", 8080, "HTTP port")
 	f.StringVar(&cfg.Host, "host", "0.0.0.0", "Bind address")
+	f.StringVar(&cfg.OllamaEnvDir, "ollama-env-dir", envOrDefault("OLLAMA_ENV_DIR", ""),
+		"Shared volume path for Ollama env file + restart sentinel (empty = disabled)")
 
 	root.AddCommand(serve)
 	if err := root.Execute(); err != nil {

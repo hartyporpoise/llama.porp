@@ -17,8 +17,11 @@ services:
   ollama:
     image: alpine/ollama:latest
     container_name: ollama
+    entrypoint: ["/bin/sh", "/scripts/ollama-wrapper.sh"]
     volumes:
       - ollama_data:/root/.ollama
+      - shared:/shared
+      - ./scripts/ollama-wrapper.sh:/scripts/ollama-wrapper.sh:ro
     ports:
       - "11434:11434"          # expose Ollama API directly if needed
     restart: unless-stopped
@@ -45,6 +48,9 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_URL: "http://ollama:11434"
+      OLLAMA_ENV_DIR: "/shared"
+    volumes:
+      - shared:/shared
     command:
       - "--ollama-url"
       - "http://ollama:11434"
@@ -67,4 +73,6 @@ services:
 
 volumes:
   ollama_data:
+    driver: local
+  shared:
     driver: local

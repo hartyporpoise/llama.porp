@@ -86,24 +86,6 @@ type Options struct {
 	// Set to PCores to avoid efficiency-core thrashing on Intel hybrid CPUs.
 	NumThread int `json:"num_thread,omitempty"`
 
-	// ── High-impact performance flags ────────────────────────────────────────
-
-	// FlashAttn enables Flash Attention — O(1) memory, faster at long context.
-	// Requires Ollama ≥ 0.1.33. Passed as "flash_attn" in the options object.
-	FlashAttn *bool `json:"flash_attn,omitempty"`
-
-	// UseMmap controls whether Ollama loads weights via mmap (OS page cache).
-	// When true, model startup is instant and pages are shared across processes.
-	UseMmap *bool `json:"use_mmap,omitempty"`
-
-	// UseMlock pins model weights into physical RAM, preventing swap eviction.
-	// Eliminates page-fault stalls at the cost of locking RAM permanently.
-	UseMlock *bool `json:"use_mlock,omitempty"`
-
-	// LowVRAM skips pre-allocated scratch buffers and uses streaming attention.
-	// Reduces peak RAM 15-25% at a small speed cost — for memory-constrained machines.
-	LowVRAM *bool `json:"low_vram,omitempty"`
-
 	// NumBatch controls the prompt evaluation batch size.
 	// Smaller values reduce peak RAM during prefill (lean context mode).
 	NumBatch int `json:"num_batch,omitempty"`

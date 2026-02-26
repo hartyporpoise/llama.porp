@@ -33,6 +33,7 @@ import (
 	"github.com/hartyporpoise/porpulsion/internal/features"
 	"github.com/hartyporpoise/porpulsion/internal/metrics"
 	"github.com/hartyporpoise/porpulsion/internal/ollama"
+	"github.com/hartyporpoise/porpulsion/internal/ollamaenv"
 )
 
 const (
@@ -274,12 +275,33 @@ func (s *Server) handleFeatures(w http.ResponseWriter, r *http.Request) {
 		if id == features.Batching {
 			s.batcher.SetEnabled(req.Enabled)
 		}
+		// Env-managed features require writing the Ollama env file and
+		// triggering a sidecar restart via the shared volume sentinel.
+		if id == features.FlashAttn || id == features.MmapWeights ||
+			id == features.MLockWeights || id == features.LowVRAM {
+			if err := s.applyOllamaEnv(); err != nil {
+				http.Error(w, "ollama env update failed: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
 		// Return updated list.
 		json.NewEncoder(w).Encode(s.featureStore.All())
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// applyOllamaEnv writes the current feature state to the shared env file and
+// touches the restart sentinel so the Ollama wrapper script re-execs the process.
+// If OllamaEnvDir is empty (no sidecar / external Ollama) this is a no-op.
+func (s *Server) applyOllamaEnv() error {
+	return ollamaenv.Write(s.cfg.OllamaEnvDir, ollamaenv.Env{
+		FlashAttention: s.featureStore.IsEnabled(features.FlashAttn),
+		UseMMap:        s.featureStore.IsEnabled(features.MmapWeights),
+		UseMlock:       s.featureStore.IsEnabled(features.MLockWeights),
+		LowVRAM:        s.featureStore.IsEnabled(features.LowVRAM),
+	})
 }
 
 // handleQuantAdvice returns the quant recommendation for this machine's RAM.
@@ -493,9 +515,6 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// boolPtr returns a pointer to b, used to send explicit bool options to Ollama.
-func boolPtr(b bool) *bool { return &b }
-
 // buildOptions assembles Ollama Options, applying active feature flags.
 func (s *Server) buildOptions(temp *float64, topP float64, topK int, maxTokens int, ctxSize int) *ollama.Options {
 	opts := &ollama.Options{}
@@ -520,22 +539,9 @@ func (s *Server) buildOptions(temp *float64, topP float64, topK int, maxTokens i
 		opts.NumThread = s.topo.PCores
 	}
 
-	// Flash Attention: O(1) memory attention kernel, faster at long context.
-	if s.featureStore.IsEnabled(features.FlashAttn) {
-		opts.FlashAttn = boolPtr(true)
-	}
-
-	// mmap: load weights via OS page cache — instant cold-start, shared pages.
-	if s.featureStore.IsEnabled(features.MmapWeights) {
-		opts.UseMmap = boolPtr(true)
-	}
-
-	// mlock: pin weights in physical RAM, prevent swap eviction.
-	if s.featureStore.IsEnabled(features.MLockWeights) {
-		opts.UseMlock = boolPtr(true)
-	}
-
 	// ── Footprint reduction ────────────────────────────────────────────────
+	// Note: flash_attn, use_mmap, use_mlock, low_vram are Modelfile-level
+	// parameters managed via applyModelfileFeatures — not per-request options.
 
 	// Lean context: cap KV cache to 512 tokens — ~8× smaller than default 4096.
 	if s.featureStore.IsEnabled(features.LeanContext) {
@@ -543,11 +549,6 @@ func (s *Server) buildOptions(temp *float64, topP float64, topK int, maxTokens i
 			opts.NumCtx = 512
 		}
 		opts.NumBatch = 128 // smaller prefill chunks to match reduced context
-	}
-
-	// Low VRAM: skip scratch buffers, use streaming attention.
-	if s.featureStore.IsEnabled(features.LowVRAM) {
-		opts.LowVRAM = boolPtr(true)
 	}
 
 	return opts
