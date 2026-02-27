@@ -514,6 +514,20 @@ body {
 }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
+/* Thinking indicator — three bouncing dots */
+.thinking-dots { display: flex; align-items: center; gap: 4px; padding: 4px 0; }
+.thinking-dots span {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text3);
+  animation: thinking-bounce 1.2s ease-in-out infinite;
+}
+.thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes thinking-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-6px); opacity: 1; }
+}
+
 .msg.error {
   max-width: 740px; margin: 0 auto; padding: 8px 0 22px;
   color: var(--red); font-size: 0.86rem;
@@ -592,12 +606,23 @@ body {
 .feature-list { display: flex; flex-direction: column; gap: 10px; }
 
 .feature-row {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px;
   background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
   padding: 10px 12px;
   transition: border-color 0.15s;
 }
 .feature-row:has(input:checked) { border-color: var(--accent); }
+
+/* Inline draft model picker inside speculative decoding row */
+.draft-picker-inline {
+  width: 100%; margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--border);
+  grid-column: 1 / -1;
+}
+.draft-picker-label {
+  font-size: 0.78rem; font-weight: 600; color: var(--text2); margin-bottom: 2px;
+}
+.draft-model-picker { font-size: 0.78rem; }
 
 .feature-info { flex: 1; min-width: 0; }
 .feature-name { display: block; font-size: 0.84rem; font-weight: 600; color: var(--text); margin-bottom: 3px; }

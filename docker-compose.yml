@@ -1,13 +1,13 @@
 # ──────────────────────────────────────────────────────────────────────────
-# Porpulsion + Ollama (alpine/ollama) — Docker Compose
+# Porpulsion + Ollama — Docker Compose
 #
 # Quick start:
 #   docker compose up
 #
 # Then open:
-#   http://localhost:8080  — porpulsion UI (main)
+#   http://localhost:8080  — porpulsion UI
 #
-# To set a default model (pre-selected in both UIs):
+# To set a default model (pre-selected in the UI):
 #   DEFAULT_MODEL=llama3.2 docker compose up
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -17,26 +17,25 @@ services:
   ollama:
     image: alpine/ollama:latest
     container_name: ollama
-    entrypoint: ["/bin/sh", "/scripts/ollama-wrapper.sh"]
+    environment:
+      # Hide GPUs from Ollama so it runs pure CPU inference.
+      CUDA_VISIBLE_DEVICES: ""
     volumes:
       - ollama_data:/root/.ollama
-      - shared:/shared
-      - ./scripts/ollama-wrapper.sh:/scripts/ollama-wrapper.sh:ro
     ports:
       - "11434:11434"          # expose Ollama API directly if needed
     restart: unless-stopped
-    mem_limit: 1g
-    memswap_limit: 1g
+    mem_limit: 2g
+    memswap_limit: 2g
     cpus: "1.0"
     healthcheck:
-      # alpine/ollama has no curl/wget — use the ollama CLI itself
       test: ["CMD", "ollama", "list"]
       interval: 5s
       timeout: 10s
       retries: 12
       start_period: 10s
 
-  # ── Porpulsion A: primary instance on port 8080 ───────────────────────────
+  # ── Porpulsion: primary instance on port 8080 ───────────────────────────
   porpulsion:
     build:
       context: .
@@ -48,9 +47,8 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_URL: "http://ollama:11434"
-      OLLAMA_ENV_DIR: "/shared"
-    volumes:
-      - shared:/shared
+      # Go runtime: make GC container-aware to prevent OOM kills.
+      GOMEMLIMIT: "900MiB"
     command:
       - "--ollama-url"
       - "http://ollama:11434"
@@ -73,6 +71,4 @@ services:
 
 volumes:
   ollama_data:
-    driver: local
-  shared:
     driver: local

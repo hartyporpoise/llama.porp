@@ -132,6 +132,24 @@ type DeleteRequest struct {
 	Name string `json:"name"`
 }
 
+// EmbedRequest maps to POST /api/embed.
+type EmbedRequest struct {
+	Model string `json:"model"`
+	Input string `json:"input"`
+}
+
+// EmbedResponse is the response from POST /api/embed.
+type EmbedResponse struct {
+	Embeddings [][]float64 `json:"embeddings"`
+}
+
+// ChatResponse is the full (non-streaming) response from POST /api/chat.
+type ChatResponse struct {
+	Model   string  `json:"model"`
+	Message Message `json:"message"`
+	Done    bool    `json:"done"`
+}
+
 // VersionResponse maps to GET /api/version.
 type VersionResponse struct {
 	Version string `json:"version"`
@@ -199,6 +217,9 @@ func (c *Client) ChatStream(ctx context.Context, req ChatRequest) (<-chan ChatCh
 		}
 
 		scanner := bufio.NewScanner(resp.Body)
+		// Default scanner buffer is 64 KB; raise to 1 MB so large JSON chunks
+		// (long responses, embedded images) don't cause "token too long" errors.
+		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 		for scanner.Scan() {
 			line := scanner.Bytes()
 			if len(line) == 0 {
@@ -263,6 +284,7 @@ func (c *Client) GenerateStream(ctx context.Context, req GenerateRequest) (<-cha
 		}
 
 		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 		for scanner.Scan() {
 			line := scanner.Bytes()
 			if len(line) == 0 {
@@ -339,6 +361,66 @@ func (c *Client) PullStream(ctx context.Context, name string) (<-chan PullStatus
 	}()
 
 	return ch, errCh
+}
+
+// Embed generates embeddings for the given input text using the specified model.
+// Returns the first embedding vector.
+func (c *Client) Embed(ctx context.Context, model, input string) ([]float64, error) {
+	body, err := json.Marshal(EmbedRequest{Model: model, Input: input})
+	if err != nil {
+		return nil, fmt.Errorf("marshal: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/api/embed", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("do: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ollama %d: %s", resp.StatusCode, string(b))
+	}
+	var embedResp EmbedResponse
+	if err := json.NewDecoder(resp.Body).Decode(&embedResp); err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	if len(embedResp.Embeddings) == 0 || len(embedResp.Embeddings[0]) == 0 {
+		return nil, fmt.Errorf("empty embedding response")
+	}
+	return embedResp.Embeddings[0], nil
+}
+
+// Chat sends a non-streaming chat request and returns the full response content.
+// Used by speculative decoding to get a quick draft from a small model.
+func (c *Client) Chat(ctx context.Context, req ChatRequest) (string, error) {
+	req.Stream = false
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", fmt.Errorf("marshal: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/api/chat", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("do: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("ollama %d: %s", resp.StatusCode, string(b))
+	}
+	var chatResp ChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return "", fmt.Errorf("decode: %w", err)
+	}
+	return chatResp.Message.Content, nil
 }
 
 // DeleteModel removes a model from Ollama.

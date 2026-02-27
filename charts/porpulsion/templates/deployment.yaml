@@ -57,18 +57,9 @@ spec:
           env:
             - name: OLLAMA_URL
               value: {{ include "porpulsion.ollamaUrl" . | quote }}
-            {{- if .Values.ollama.enabled }}
-            - name: OLLAMA_ENV_DIR
-              value: /shared
-            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- if .Values.ollama.enabled }}
-          volumeMounts:
-            - name: shared
-              mountPath: /shared
-          {{- end }}
           startupProbe:
             httpGet:
               path: /health
@@ -98,9 +89,6 @@ spec:
         - name: ollama
           image: "{{ .Values.ollama.image.repository }}:{{ .Values.ollama.image.tag }}"
           imagePullPolicy: {{ .Values.ollama.image.pullPolicy }}
-          # Use the wrapper script so porpulsion can update env vars and trigger
-          # a restart via the shared /shared volume without pod recreation.
-          command: ["/bin/sh", "/scripts/ollama-wrapper.sh"]
           ports:
             - name: ollama
               containerPort: 11434
@@ -130,11 +118,6 @@ spec:
           volumeMounts:
             - name: ollama-data
               mountPath: /root/.ollama
-            - name: shared
-              mountPath: /shared
-            - name: ollama-wrapper
-              mountPath: /scripts/ollama-wrapper.sh
-              subPath: ollama-wrapper.sh
         {{- end }}
 
       volumes:
@@ -145,14 +128,6 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
-        {{- if .Values.ollama.enabled }}
-        - name: shared
-          emptyDir: {}
-        - name: ollama-wrapper
-          configMap:
-            name: {{ include "porpulsion.fullname" . }}-ollama-wrapper
-            defaultMode: 0755
-        {{- end }}
 
       {{- with .Values.nodeSelector }}
       nodeSelector:

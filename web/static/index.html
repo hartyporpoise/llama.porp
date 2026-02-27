@@ -187,21 +187,18 @@
           </div>
         </section>
 
-        <!-- CPU / throughput features -->
+        <!-- Proxy Intelligence -->
         <section class="settings-section">
-          <h2 class="settings-section-title">CPU Performance</h2>
-          <p class="field-hint" style="margin-bottom:14px">Flags that increase token throughput on the CPU. Toggle individually to A/B test.</p>
-          <div id="featureListCpu" class="feature-list">
-            <span style="font-size:0.78rem;color:var(--text3)">Loading…</span>
-          </div>
-          <div id="quantAdvicePanel" class="quant-advice-panel" style="display:none;margin-top:14px"></div>
-        </section>
-
-        <!-- Memory / footprint features -->
-        <section class="settings-section">
-          <h2 class="settings-section-title">Memory Footprint</h2>
-          <p class="field-hint" style="margin-bottom:14px">Flags that reduce RAM usage — lets you run larger models on constrained hardware.</p>
-          <div id="featureListMemory" class="feature-list">
+          <h2 class="settings-section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px">
+              <path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/>
+              <line x1="9" y1="22" x2="15" y2="22"/>
+            </svg>
+            Proxy Intelligence
+          </h2>
+          <p class="field-hint" style="margin-bottom:14px">Application-level features that accelerate inference without modifying Ollama. Semantic Cache auto-pulls nomic-embed-text when enabled.</p>
+          <div id="featureListProxy" class="feature-list">
             <span style="font-size:0.78rem;color:var(--text3)">Loading…</span>
           </div>
         </section>

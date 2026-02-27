@@ -3,18 +3,12 @@
 // Flags are stored in memory only — they reset on restart, which is intentional:
 // this lets you A/B test by restarting containers with different defaults.
 //
-// Available features:
+// User-visible flags (returned by All()):
 //
-//	flash_attn       — enable Flash Attention in Ollama (O(1) memory, faster long-context)
-//	mmap_weights     — load model weights via mmap (OS page cache, instant cold start)
-//	mlock_weights    — lock model weights into RAM (no swap, eliminates page-fault stalls)
-//	lean_context     — cap num_ctx at 512 to shrink KV cache ~8x (footprint reduction)
-//	low_vram         — disable Ollama scratch buffers; streaming attention (footprint reduction)
-//	aggressive_quant — pull one quant tier lower than recommended to fit larger models in RAM
-//	batching         — queue concurrent requests and drain them serially to Ollama
-//	prefix_cache     — reuse in-memory KV context when prompt prefix matches a recent request
-//	quant_advisor    — surface quant recommendations based on available RAM
-//	thread_hint      — pass num_thread=PCores to Ollama, skipping efficiency cores
+//	semantic_cache       — cache responses by embedding similarity
+//	smart_context        — compress conversation history to reduce prefill
+//	speculative_decoding — draft model predicts tokens for batch verification
+//	auto_compaction      — LLM-powered conversation compaction when context fills up
 package features
 
 import (
@@ -25,21 +19,23 @@ import (
 type FeatureID string
 
 const (
-	// Performance flags
-	FlashAttn    FeatureID = "flash_attn"
-	MmapWeights  FeatureID = "mmap_weights"
-	MLockWeights FeatureID = "mlock_weights"
+	// SemanticCacheFlag caches responses keyed by embedding similarity.
+	// Similar questions get instant cached answers.
+	SemanticCacheFlag FeatureID = "semantic_cache"
 
-	// Footprint reduction flags
-	LeanContext     FeatureID = "lean_context"
-	LowVRAM         FeatureID = "low_vram"
-	AggressiveQuant FeatureID = "aggressive_quant"
+	// SmartContext compresses long conversation history before sending to
+	// Ollama, keeping only the most relevant messages to reduce prefill time.
+	SmartContext FeatureID = "smart_context"
 
-	// Utility flags
-	Batching     FeatureID = "batching"
-	PrefixCache  FeatureID = "prefix_cache"
-	QuantAdvisor FeatureID = "quant_advisor"
-	ThreadHint   FeatureID = "thread_hint"
+	// SpeculativeDecoding uses a small draft model to predict tokens, then
+	// sends them as a prefix to the target model for batch verification.
+	// The draft model is user-selectable via the settings UI.
+	SpeculativeDecoding FeatureID = "speculative_decoding"
+
+	// AutoCompaction asks the LLM to summarize the conversation when context
+	// usage exceeds 80%. The summary replaces the chat history so the
+	// conversation can continue without hitting the context limit.
+	AutoCompaction FeatureID = "auto_compaction"
 )
 
 // Info describes a feature flag for display in the UI.
@@ -52,24 +48,19 @@ type Info struct {
 
 // Store holds the current enabled/disabled state of all feature flags.
 type Store struct {
-	mu    sync.RWMutex
-	flags map[FeatureID]bool
+	mu         sync.RWMutex
+	flags      map[FeatureID]bool
+	draftModel string // user-selected draft model for speculative decoding
 }
 
 // NewStore creates a Store with all features disabled by default.
 func NewStore() *Store {
 	return &Store{
 		flags: map[FeatureID]bool{
-			FlashAttn:       false,
-			MmapWeights:     false,
-			MLockWeights:    false,
-			LeanContext:     false,
-			LowVRAM:         false,
-			AggressiveQuant: false,
-			Batching:        false,
-			PrefixCache:     false,
-			QuantAdvisor:    false,
-			ThreadHint:      false,
+			SemanticCacheFlag:   false,
+			SmartContext:        false,
+			SpeculativeDecoding: false,
+			AutoCompaction:      false,
 		},
 	}
 }
@@ -92,73 +83,54 @@ func (s *Store) Set(id FeatureID, enabled bool) bool {
 	return true
 }
 
-// All returns a slice of Info for every known feature, in display order.
+// DraftModel returns the currently configured draft model for speculative decoding.
+// Returns empty string if none is set.
+func (s *Store) DraftModel() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.draftModel
+}
+
+// SetDraftModel sets the draft model used for speculative decoding.
+func (s *Store) SetDraftModel(model string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.draftModel = model
+}
+
+// All returns the user-visible feature flags in display order.
 func (s *Store) All() []Info {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	return []Info{
 		{
-			ID:          FlashAttn,
-			Name:        "Flash Attention",
-			Description: "Enable Flash Attention in Ollama (OLLAMA_FLASH_ATTENTION=1). Computes attention in tiled blocks — O(1) memory instead of O(n²) — dramatically faster at long context lengths (2k+ tokens). ⚠ Requires OLLAMA_ENV_DIR to be set; triggers an Ollama process restart.",
-			Enabled:     s.flags[FlashAttn],
+			ID:   SemanticCacheFlag,
+			Name: "Semantic Cache",
+			Description: "Cache responses by semantic similarity. Similar questions get instant " +
+				"cached answers instead of running inference. Auto-pulls nomic-embed-text.",
+			Enabled: s.flags[SemanticCacheFlag],
 		},
 		{
-			ID:          MmapWeights,
-			Name:        "Memory-Map Weights (mmap)",
-			Description: "Keep memory-mapped weights resident via OLLAMA_NOPRUNE=1. The OS page-cache serves weights directly to Ollama, enabling instant cold-start and shared pages across processes. ⚠ Requires OLLAMA_ENV_DIR to be set; triggers an Ollama process restart.",
-			Enabled:     s.flags[MmapWeights],
+			ID:   SmartContext,
+			Name: "Smart Context",
+			Description: "Compress long conversation history before sending to Ollama. Keeps the " +
+				"first and last messages, drops the middle. Dramatically reduces prefill time.",
+			Enabled: s.flags[SmartContext],
 		},
 		{
-			ID:          MLockWeights,
-			Name:        "Lock Weights in RAM (mlock)",
-			Description: "Set OLLAMA_KEEP_ALIVE=24h to keep model weights pinned in memory and prevent eviction. Eliminates reload stalls during inference when system RAM is under pressure. ⚠ Requires OLLAMA_ENV_DIR to be set; triggers an Ollama process restart.",
-			Enabled:     s.flags[MLockWeights],
-		},
-		// ── Footprint Reduction ───────────────────────────────────────────────
-		{
-			ID:          LeanContext,
-			Name:        "Lean Context Window",
-			Description: "Caps the KV context to 512 tokens — shrinks KV cache memory ~8× compared to the default 4096. Lets you run a model that would otherwise OOM. Conversations longer than 512 tokens will be truncated. Best combined with Low VRAM mode.",
-			Enabled:     s.flags[LeanContext],
+			ID:   SpeculativeDecoding,
+			Name: "Speculative Decode",
+			Description: "Use a small draft model to predict tokens, then send them " +
+				"as a prefix to the target model for batch verification.",
+			Enabled: s.flags[SpeculativeDecoding],
 		},
 		{
-			ID:          LowVRAM,
-			Name:        "Low VRAM Mode",
-			Description: "Sets OLLAMA_NUM_PARALLEL=1 to reduce concurrent memory usage. Limits Ollama to one request at a time to minimise peak RAM — useful when running near the edge of available memory. ⚠ Requires OLLAMA_ENV_DIR to be set; triggers an Ollama process restart.",
-			Enabled:     s.flags[LowVRAM],
-		},
-		{
-			ID:          AggressiveQuant,
-			Name:        "Aggressive Quantization",
-			Description: "When pulling a model, drops one full quant tier below what the advisor recommends (e.g. Q4_K_M → Q2_K). Lets you fit a larger model at the cost of noticeably lower quality. Requires Quantization Advisor to also be enabled.",
-			Enabled:     s.flags[AggressiveQuant],
-		},
-		// ── Utility ───────────────────────────────────────────────────────────
-		{
-			ID:          ThreadHint,
-			Name:        "Thread Affinity Hint",
-			Description: "⚠ Only useful on Intel hybrid CPUs (12th-gen+) with P+E cores. Sends num_thread=P-cores to Ollama. On Apple Silicon or any uniform-core CPU this forces a model reload and HURTS performance — leave it OFF unless you have a hybrid Intel CPU.",
-			Enabled:     s.flags[ThreadHint],
-		},
-		{
-			ID:          PrefixCache,
-			Name:        "Prompt Prefix Cache",
-			Description: "When a new request shares the same system prompt + conversation prefix as a recent one, hint Ollama to reuse its in-memory KV context instead of re-evaluating tokens.",
-			Enabled:     s.flags[PrefixCache],
-		},
-		{
-			ID:          Batching,
-			Name:        "Request Batching",
-			Description: "⚠ Serialises ALL requests through a single queue. Only useful when running as a shared multi-user server. For single-user use this will make every message wait for the previous one to finish — leave it OFF.",
-			Enabled:     s.flags[Batching],
-		},
-		{
-			ID:          QuantAdvisor,
-			Name:        "Quantization Advisor",
-			Description: "Analyse available system RAM and recommend the best quantization tier when pulling models. Displayed as a badge next to each model in search results.",
-			Enabled:     s.flags[QuantAdvisor],
+			ID:   AutoCompaction,
+			Name: "Auto-Compaction",
+			Description: "When context usage exceeds 80%, ask the LLM to summarize the " +
+				"conversation. The summary replaces chat history so you never hit the context limit.",
+			Enabled: s.flags[AutoCompaction],
 		},
 	}
 }

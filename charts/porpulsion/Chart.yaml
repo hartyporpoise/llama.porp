@@ -2,7 +2,7 @@ apiVersion: v2
 name: porpulsion
 description: Porpulsion — high-performance Ollama proxy with web UI and feature flags
 type: application
-version: 0.0.3
+version: 0.0.4
 appVersion: "0.0.0"
 keywords:
   - llm

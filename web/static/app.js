@@ -63,6 +63,7 @@ function loadConversation(id) {
   if (!conv) return;
   activeConvId = id;
   chatHistory  = conv.messages.slice();
+  _compactionTriggered = false;
   renderChatHistory();
   document.getElementById('chatMeta').textContent = '';
   renderSidebar();
@@ -164,6 +165,12 @@ document.addEventListener('click', e => {
   }
 });
 
+// Filter out embedding-only models (not usable for chat).
+function isChatModel(m) {
+  const n = m.name.toLowerCase();
+  return !n.includes('embed');
+}
+
 function selectModel(name) {
   currentModel = name;
   document.getElementById('modelPickerLabel').textContent = name || 'Select model';
@@ -176,11 +183,12 @@ function selectModel(name) {
 
 function renderModelDropdown(models) {
   const list = document.getElementById('modelDropdownList');
-  if (!models || models.length === 0) {
+  const chatModels = (models || []).filter(isChatModel);
+  if (chatModels.length === 0) {
     list.innerHTML = `<div class="model-dropdown-empty">No models installed</div>`;
     return;
   }
-  list.innerHTML = models.map(m =>
+  list.innerHTML = chatModels.map(m =>
     `<div class="model-dropdown-item${m.name === currentModel ? ' active' : ''}"
       data-model="${esc(m.name)}"
       onclick="selectModel('${esc(m.name)}')">
@@ -226,9 +234,10 @@ async function loadModels() {
     }
     setEmptyState(false);
 
-    // Restore previously selected model if still available.
-    if (!currentModel || !models.some(m => m.name === currentModel)) {
-      currentModel = models[0].name;
+    // Restore previously selected model if still available (skip embedding models).
+    const chatModels = models.filter(isChatModel);
+    if (!currentModel || !chatModels.some(m => m.name === currentModel)) {
+      currentModel = chatModels.length > 0 ? chatModels[0].name : '';
     }
     document.getElementById('modelPickerLabel').textContent = currentModel;
     renderModelDropdown(models);
@@ -469,22 +478,41 @@ async function deleteModel(name) {
 
 // ── Performance features ───────────────────────────────────────────────────
 
-// IDs that belong to the Memory Footprint section; everything else → CPU Performance.
-const MEMORY_FEATURE_IDS = new Set(['lean_context', 'low_vram', 'aggressive_quant']);
-
 async function loadFeatures() {
   try {
     const resp = await fetch('/api/features');
     if (!resp.ok) return;
     const list = await resp.json();
     renderFeatures(list);
-    if (list.some(f => f.id === 'quant_advisor' && f.enabled)) {
-      loadQuantAdvice();
-    }
   } catch {}
 }
 
+// Render a single feature as a toggle row.
+// Speculative Decoding gets an inline draft model picker when enabled.
 function featureRow(f) {
+  let extra = '';
+  if (f.id === 'speculative_decoding' && f.enabled) {
+    // Inline draft model picker — same style as the chat model picker.
+    extra = `
+    <div class="draft-picker-inline" id="draftPickerInline">
+      <div class="draft-picker-label">Draft model</div>
+      <div class="model-picker-wrap" style="margin-top:4px">
+        <div class="model-picker draft-model-picker" id="draftModelPicker" onclick="toggleDraftPicker()">
+          <svg class="model-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          <span class="model-picker-label" id="draftPickerLabel">Loading…</span>
+          <svg class="model-picker-chevron" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+        <div class="model-dropdown" id="draftModelDropdown">
+          <div id="draftModelDropdownList"></div>
+        </div>
+      </div>
+      <div class="field-hint" style="margin-top:4px">Smaller models work best as the draft model.</div>
+    </div>`;
+  }
   return `
   <div class="feature-row" id="feature-row-${esc(f.id)}">
     <div class="feature-info">
@@ -496,24 +524,32 @@ function featureRow(f) {
         onchange="toggleFeature('${esc(f.id)}', this.checked)" />
       <span class="toggle-track"></span>
     </label>
+    ${extra}
   </div>`;
 }
 
+// IDs that belong to the Proxy Intelligence group.
+const PROXY_FEATURE_IDS = new Set([
+  'semantic_cache', 'smart_context', 'speculative_decoding', 'auto_compaction',
+]);
+
 function renderFeatures(list) {
-  const cpu    = document.getElementById('featureListCpu');
-  const memory = document.getElementById('featureListMemory');
-  const empty  = '<p style="color:var(--text3);font-size:0.78rem">No flags in this group.</p>';
+  const proxy = document.getElementById('featureListProxy');
+  const empty = '<p style="color:var(--text3);font-size:0.78rem">No flags available.</p>';
 
   if (!list || list.length === 0) {
-    cpu.innerHTML = memory.innerHTML = empty;
+    proxy.innerHTML = empty;
     return;
   }
 
-  const cpuFlags    = list.filter(f => !MEMORY_FEATURE_IDS.has(f.id));
-  const memoryFlags = list.filter(f =>  MEMORY_FEATURE_IDS.has(f.id));
+  const proxyFlags = list.filter(f => PROXY_FEATURE_IDS.has(f.id));
+  proxy.innerHTML = proxyFlags.length ? proxyFlags.map(featureRow).join('') : empty;
 
-  cpu.innerHTML    = cpuFlags.length    ? cpuFlags.map(featureRow).join('')    : empty;
-  memory.innerHTML = memoryFlags.length ? memoryFlags.map(featureRow).join('') : empty;
+  // If speculative decoding is enabled, populate the inline draft picker.
+  const specFlag = list.find(f => f.id === 'speculative_decoding');
+  if (specFlag && specFlag.enabled) {
+    populateDraftPicker();
+  }
 }
 
 async function toggleFeature(id, enabled) {
@@ -526,40 +562,101 @@ async function toggleFeature(id, enabled) {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const updated = await resp.json();
     renderFeatures(updated);
-    if (id === 'quant_advisor') {
-      if (enabled) loadQuantAdvice();
-      else document.getElementById('quantAdvicePanel').style.display = 'none';
-    }
   } catch (err) {
     alert('Could not toggle feature: ' + err.message);
   }
 }
 
-async function loadQuantAdvice() {
-  const panel = document.getElementById('quantAdvicePanel');
-  panel.style.display = '';
-  panel.innerHTML = '<span style="font-size:0.78rem;color:var(--text3)">Analysing RAM…</span>';
+// ── Draft model picker (inline in Speculative Decoding row) ─────────────────
+let _draftPickerOpen = false;
+let _currentDraftModel = '';
+
+// Populate the inline draft model dropdown with installed models.
+async function populateDraftPicker() {
+  const label = document.getElementById('draftPickerLabel');
+  const list  = document.getElementById('draftModelDropdownList');
+  if (!label || !list) return;
+
   try {
-    const resp = await fetch('/api/quant-advice');
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-    const rec  = data.recommended;
-    const ram  = data.ram_gb ? data.ram_gb.toFixed(1) : '?';
-    panel.innerHTML = `
-      <div class="quant-advice">
-        <div class="quant-advice-header">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
-          Quant recommendation — ${ram} GB RAM
-        </div>
-        <div class="quant-badge">${esc(rec?.label || '—')}</div>
-        <p class="quant-desc">${esc(rec?.description || '')}</p>
-        <p class="quant-hint">Models pulled without a tag will use <strong>${esc(rec?.tag || '—')}</strong>.</p>
-      </div>`;
-  } catch {
-    panel.innerHTML = '<span style="font-size:0.78rem;color:var(--text3)">Could not load advice.</span>';
+    const [modelsResp, draftResp] = await Promise.all([
+      fetch('/api/models'),
+      fetch('/api/draft-model'),
+    ]);
+    const models     = modelsResp.ok ? await modelsResp.json() : [];
+    const draftData  = draftResp.ok  ? await draftResp.json()  : {};
+    _currentDraftModel = draftData.model || '';
+
+    label.textContent = _currentDraftModel || 'Select draft model';
+
+    const chatModels = (models || []).filter(isChatModel);
+    if (chatModels.length === 0) {
+      list.innerHTML = '<div class="model-dropdown-empty">No models installed</div>';
+      return;
+    }
+    // Add a "none" option, then all installed chat models.
+    list.innerHTML =
+      `<div class="model-dropdown-item${!_currentDraftModel ? ' active' : ''}"
+        data-model="" onclick="selectDraftModel('')">
+        — none —
+      </div>` +
+      chatModels.map(m =>
+        `<div class="model-dropdown-item${m.name === _currentDraftModel ? ' active' : ''}"
+          data-model="${esc(m.name)}" onclick="selectDraftModel('${esc(m.name)}')">
+          ${esc(m.name)}
+        </div>`
+      ).join('');
+  } catch {}
+}
+
+function toggleDraftPicker() {
+  _draftPickerOpen ? closeDraftPicker() : openDraftPicker();
+}
+
+function openDraftPicker() {
+  _draftPickerOpen = true;
+  const picker = document.getElementById('draftModelPicker');
+  const dd     = document.getElementById('draftModelDropdown');
+  if (picker) picker.classList.add('open');
+  if (dd) dd.classList.add('open');
+}
+
+function closeDraftPicker() {
+  _draftPickerOpen = false;
+  const picker = document.getElementById('draftModelPicker');
+  const dd     = document.getElementById('draftModelDropdown');
+  if (picker) picker.classList.remove('open');
+  if (dd) dd.classList.remove('open');
+}
+
+// Close draft picker on click outside.
+document.addEventListener('click', e => {
+  if (_draftPickerOpen &&
+      !e.target.closest('#draftModelPicker') &&
+      !e.target.closest('#draftModelDropdown')) {
+    closeDraftPicker();
+  }
+});
+
+// Select a draft model and save it to the server.
+async function selectDraftModel(name) {
+  _currentDraftModel = name;
+  const label = document.getElementById('draftPickerLabel');
+  if (label) label.textContent = name || 'Select draft model';
+
+  // Update active state.
+  document.querySelectorAll('#draftModelDropdownList .model-dropdown-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.model === name);
+  });
+  closeDraftPicker();
+
+  try {
+    await fetch('/api/draft-model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: name }),
+    });
+  } catch (err) {
+    alert('Could not set draft model: ' + err.message);
   }
 }
 
@@ -701,6 +798,7 @@ function newChat() {
   saveActiveConversation();
   activeConvId = null;
   chatHistory  = [];
+  _compactionTriggered = false;
   renderChatHistory();
   document.getElementById('chatMeta').textContent = '';
   renderSidebar();
@@ -752,6 +850,10 @@ async function sendChat() {
 
   const start = Date.now();
   let   tokenCount = 0;
+  let   lastUsage  = null; // {prompt_tokens, completion_tokens, total_tokens}
+
+  // Show thinking indicator while waiting for the first token.
+  const thinkingEl = showThinkingBubble();
 
   try {
     const resp = await fetch('/v1/chat/completions', {
@@ -765,14 +867,19 @@ async function sendChat() {
         temperature: cfg.temperature,
         top_p:       cfg.topP,
         top_k:       cfg.topK,
+        ctx_size:    cfg.ctxSize,
       }),
     });
 
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+    if (!resp.ok) {
+      removeThinkingBubble(thinkingEl);
+      throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+    }
 
     chatHistory.push({ role: 'assistant', content: '' });
     const idx    = chatHistory.length - 1;
-    const bubble = appendMessageBubble(idx, true);
+    let   bubble = null; // created on first token
+    let   thinkingRemoved = false;
 
     activeReader  = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -793,23 +900,51 @@ async function sendChat() {
           if (chunk.error) throw new Error(chunk.error);
           const delta = chunk.choices?.[0]?.delta?.content || '';
           if (delta) {
+            // On first token: swap thinking bubble for streaming bubble.
+            if (!thinkingRemoved) {
+              removeThinkingBubble(thinkingEl);
+              thinkingRemoved = true;
+              bubble = appendMessageBubble(idx, true);
+            }
             chatHistory[idx].content += delta;
             tokenCount++;
             updateStreamingBubble(bubble, chatHistory[idx].content);
           }
+          // Capture usage from the final chunk.
+          if (chunk.usage) lastUsage = chunk.usage;
         } catch (parseErr) {
           if (parseErr.message?.startsWith('Error:')) throw parseErr;
         }
       }
+    }
+    // If no tokens arrived at all, still clean up thinking bubble.
+    if (!thinkingRemoved) {
+      removeThinkingBubble(thinkingEl);
+      bubble = appendMessageBubble(idx, true);
     }
 
     finaliseAssistantBubble(bubble, chatHistory[idx].content);
 
     const elapsed = ((Date.now() - start) / 1000).toFixed(1);
     const tps     = tokenCount > 0 ? (tokenCount / ((Date.now() - start) / 1000)).toFixed(1) : '—';
-    meta.textContent = `${elapsed}s · ${tokenCount} tokens · ${tps} tok/s`;
+
+    // Build meta line with context usage if available.
+    let metaText = `${elapsed}s · ${tokenCount} tokens · ${tps} tok/s`;
+    if (lastUsage && lastUsage.total_tokens > 0) {
+      const total = lastUsage.total_tokens;
+      const ctx   = cfg.ctxSize || 4096;
+      const pct   = Math.round((total / ctx) * 100);
+      metaText += ` · ${formatTokenCount(total)}/${formatTokenCount(ctx)} ctx (${pct}%)`;
+
+      // Auto-compact: if context usage exceeds 80%, summarize the conversation.
+      if (pct >= 80) {
+        autoCompactConversation();
+      }
+    }
+    meta.textContent = metaText;
 
   } catch (err) {
+    removeThinkingBubble(thinkingEl); // ensure thinking bubble is gone
     if (err.name !== 'AbortError') {
       chatHistory.push({ role: 'error', content: `Error: ${err.message}` });
       appendMessageBubble(chatHistory.length - 1);
@@ -881,6 +1016,23 @@ function finaliseAssistantBubble(el, content) {
   el.scrollIntoView({ block: 'end', behavior: 'instant' });
 }
 
+// Show a "thinking" bubble with bouncing dots while waiting for the first token.
+function showThinkingBubble() {
+  const container = document.getElementById('chatHistory');
+  const el = document.createElement('div');
+  el.className = 'msg assistant thinking';
+  el.innerHTML = `<div class="msg-assistant-inner">
+    <div class="thinking-dots"><span></span><span></span><span></span></div>
+  </div>`;
+  container.appendChild(el);
+  el.scrollIntoView({ block: 'end', behavior: 'instant' });
+  return el;
+}
+
+function removeThinkingBubble(el) {
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+}
+
 function renderChatHistory() {
   const container = document.getElementById('chatHistory');
   container.innerHTML = '';
@@ -901,6 +1053,75 @@ function formatUptime(secs) {
   if (secs < 60)   return `${Math.floor(secs)}s`;
   if (secs < 3600) return `${Math.floor(secs/60)}m ${Math.floor(secs%60)}s`;
   return `${Math.floor(secs/3600)}h ${Math.floor((secs%3600)/60)}m`;
+}
+
+// Format token counts: 4096 → "4k", 512 → "512", 131072 → "128k"
+function formatTokenCount(n) {
+  if (n >= 1000) return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + 'k';
+  return String(n);
+}
+
+// Auto-compact the conversation when context is nearly full.
+// Asks the LLM to summarize the chat, then replaces history with the summary.
+// Only fires once per conversation to avoid looping.
+let _compactionTriggered = false;
+async function autoCompactConversation() {
+  if (_compactionTriggered) return;
+  if (chatHistory.length < 4) return; // too short to compact
+
+  // Check if auto_compaction feature is enabled.
+  try {
+    const flagResp = await fetch('/api/features');
+    if (!flagResp.ok) return;
+    const flags = await flagResp.json();
+    const ac = flags.find(f => f.id === 'auto_compaction');
+    if (!ac || !ac.enabled) return;
+  } catch { return; }
+
+  _compactionTriggered = true;
+  showToast('Context nearly full — compacting conversation…');
+
+  try {
+    // Build messages array (same format the server expects).
+    const messages = chatHistory
+      .filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'system')
+      .map(m => ({ role: m.role, content: m.content }));
+
+    const resp = await fetch('/api/compact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: currentModel, messages }),
+    });
+
+    if (!resp.ok) {
+      console.error('Compaction failed:', resp.status);
+      return;
+    }
+
+    const data = await resp.json();
+    if (!data.summary) return;
+
+    // Replace chat history with: summary as a system context note + last exchange.
+    const lastUser = [...chatHistory].reverse().find(m => m.role === 'user');
+    const lastAsst = [...chatHistory].reverse().find(m => m.role === 'assistant');
+
+    chatHistory = [
+      { role: '_system', content: '[Conversation compacted — summary below]' },
+      { role: 'assistant', content: '**Conversation compacted.** Here\'s what we\'ve discussed so far:\n\n' + data.summary },
+    ];
+    // Keep the last exchange so the user sees continuity.
+    if (lastUser) chatHistory.push(lastUser);
+    if (lastAsst) chatHistory.push(lastAsst);
+
+    renderChatHistory();
+    saveActiveConversation();
+    showToast('Conversation compacted');
+    // Reset so compaction can trigger again if context fills up again.
+    _compactionTriggered = false;
+  } catch (err) {
+    console.error('Compaction error:', err);
+    _compactionTriggered = false; // allow retry on failure too
+  }
 }
 
 // ── Markdown rendering ─────────────────────────────────────────────────────
