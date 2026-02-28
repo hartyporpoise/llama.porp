@@ -1,8 +1,8 @@
 """
 Persistent WebSocket channel between peers.
 
-After the mTLS peering handshake completes, the initiating side opens a
-WebSocket connection to the accepting peer's /agent/ws endpoint. All
+After the peering handshake completes, the initiating side opens a
+WebSocket connection to the accepting peer's /ws endpoint. All
 subsequent peer-to-peer communication (workload submission, status callbacks,
 proxy tunnelling) flows over this single persistent connection instead of
 making new outbound HTTPS requests for each call.
@@ -160,7 +160,7 @@ class PeerChannel:
 
     def connect_and_maintain(self):
         """
-        Blocking loop: connect to the peer's /agent/ws endpoint and keep the
+        Blocking loop: connect to the peer's /ws endpoint and keep the
         connection alive, reconnecting on failure. Run in a daemon thread.
         """
         attempt = 0
@@ -192,18 +192,13 @@ class PeerChannel:
         from porpulsion import tls, state
 
         # WS goes to the peer's public URL (nginx in production, UI NodePort in dev).
-        # The /agent/ws route is served by Flask on port 8000.
         ws_url = self.peer_url.replace("https://", "wss://").replace("http://", "ws://")
-        ws_url = ws_url.rstrip("/") + "/agent/ws"
+        ws_url = ws_url.rstrip("/") + "/ws"
 
-        # Verify the server TLS cert against the peer CA bundle (system + peer self-signed)
+        # For WSS connections nginx (or the LB) presents a real TLS cert — let
+        # websocket-client verify it using the system CA bundle (certifi).
+        # For plain WS there's nothing to verify.
         ssl_opts: dict = {}
-        if self.ca_pem:
-            bundle = tls.peer_verify_bundle(self.peer_name)
-            if isinstance(bundle, str):
-                ssl_opts["ca_certs"] = bundle
-        else:
-            ssl_opts["cert_reqs"] = __import__("ssl").CERT_NONE
 
         # Send our CA PEM base64-encoded — PEM contains newlines which would
         # break HTTP header framing if sent raw.

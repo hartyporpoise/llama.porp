@@ -247,7 +247,7 @@ porpulsion/
 │   │   ├── workloads.py      # /remoteapp, /remoteapps, /remoteapp/<id>/*
 │   │   ├── tunnels.py        # /remoteapp/<id>/proxy/* (HTTP reverse proxy)
 │   │   ├── settings.py       # /settings
-│   │   └── ws.py             # /agent/ws (WebSocket upgrade + CA auth)
+│   │   └── ws.py             # /ws (WebSocket upgrade + CA auth)
 │   └── k8s/
 │       ├── executor.py       # Creates/updates/deletes Kubernetes Deployments
 │       └── tunnel.py         # Resolves pod IP from labels, proxies HTTP
@@ -275,7 +275,7 @@ porpulsion/
 
 ### WebSocket channel
 
-After peering completes, each agent opens a persistent WebSocket connection to its peer's `/agent/ws` endpoint. Authentication uses the CA fingerprint sent in the `X-Agent-Ca` header (base64-encoded PEM) — no client certificate is needed for the WS upgrade, which avoids nginx client-cert-forwarding complexity.
+After peering completes, each agent opens a persistent WebSocket connection to its peer's `/ws` endpoint. Authentication uses the CA fingerprint sent in the `X-Agent-Ca` header (base64-encoded PEM) — no client certificate is needed for the WS upgrade, which avoids nginx client-cert-forwarding complexity.
 
 Both sides attempt to connect outbound on startup. Whichever side connects first becomes the active channel; the other side's outbound attempt arrives as an inbound connection and replaces it cleanly. The channel reconnects automatically with exponential backoff (2s → 4s → 8s → 16s → 30s); backoff resets to 2s after each successful connection.
 

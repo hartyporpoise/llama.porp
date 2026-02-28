@@ -22,10 +22,10 @@ agent:
   agentName: ""
 
   # -- Externally reachable URL for this agent (e.g. https://porpulsion.example.com).
-  #    Peer agents use this address for the initial peering handshake and to open
-  #    the persistent WebSocket channel (/agent/ws). Everything runs on port 8000.
-  #    Auto-detected from the pod's default route if left empty, but explicit is
-  #    recommended in production.
+  #    Peer agents use this address for the initial peering handshake and the
+  #    persistent WebSocket channel (/ws). Should be your Ingress or
+  #    LoadBalancer hostname. Auto-detected from the pod's default route if left
+  #    empty, but explicit is recommended in production.
   selfUrl: ""
 
 # ── Service ────────────────────────────────────────────────────────────────────

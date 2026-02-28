@@ -1,10 +1,10 @@
 """
 WebSocket endpoint for peer-to-peer channels.
 
-Peers connect to /agent/ws after the initial peering handshake. Authentication
-uses the X-Agent-Ca header (the connecting peer's CA PEM) rather than a TLS
-client cert, because the WS upgrade goes through nginx on port 8000 where no
-client cert is available. We verify the CA fingerprint against known peers.
+Peers connect to /ws after the initial peering handshake. Authentication
+uses the X-Agent-Ca header (the connecting peer's CA PEM). We verify the
+CA fingerprint against known peers before handing the socket to the channel
+manager.
 """
 import base64
 import logging
@@ -46,7 +46,7 @@ def _identify_peer_by_ca(ca_pem: str) -> str | None:
     return None
 
 
-@sock.route("/agent/ws")
+@sock.route("/ws")
 def peer_ws(ws):
     """
     Incoming WebSocket connection from a peer.

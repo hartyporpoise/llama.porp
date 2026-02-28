@@ -10,7 +10,7 @@ spec:
   selector:
     app: {{ include "porpulsion.fullname" . }}-agent
   ports:
-    # Dashboard UI and persistent WebSocket peer channel (/agent/ws)
+    # Dashboard UI and persistent WebSocket peer channel (/ws)
     - name: ui-ws
       port: {{ .Values.service.port }}
       targetPort: {{ .Values.service.port }}
