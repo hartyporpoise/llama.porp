@@ -87,14 +87,52 @@ helm upgrade --install porpulsion oci://ghcr.io/hartyporpoise/porpulsion \
 
 Both services default to `ClusterIP`. Expose them with your own Ingress or LoadBalancer:
 
-- **Dashboard** (HTTP) — standard Ingress, any controller
-- **mTLS agent** (TCP) — requires TCP passthrough; use `nginx.ingress.kubernetes.io/ssl-passthrough: "true"` or a dedicated `LoadBalancer` service
+- **Dashboard** (HTTP, port 8000) — standard nginx Ingress, any path
+- **mTLS agent** (TLS, port 8443) — nginx routes `/agent` to this port; peer agents communicate only on `/agent/*` paths so it stays cleanly separated from the dashboard
 
 ```sh
 # Quick access without an Ingress
 kubectl port-forward svc/porpulsion 8000:8000 -n porpulsion   # dashboard
 kubectl port-forward svc/porpulsion 8443:8443 -n porpulsion   # mTLS agent
 ```
+
+### nginx Ingress example
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: porpulsion
+  namespace: porpulsion
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: porpulsion.example.com
+      http:
+        paths:
+          # mTLS agent — peer-to-peer traffic only, routed to port 8443.
+          # nginx.ingress.kubernetes.io/ssl-passthrough is NOT needed here
+          # because porpulsion handles mTLS itself; nginx proxies plain TCP.
+          - path: /agent(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: porpulsion
+                port:
+                  number: 8443
+          # Dashboard — plain HTTP, serves the UI and API.
+          - path: /()(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: porpulsion
+                port:
+                  number: 8000
+```
+
+> **Note:** Set `agent.selfUrl` to `https://porpulsion.example.com:443` (or whichever port your Ingress terminates on) so peer agents know the correct address to reach `/agent/*`.
 
 ### Helm values
 
