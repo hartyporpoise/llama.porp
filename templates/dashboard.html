@@ -1217,6 +1217,11 @@
               <option value="200" selected>200</option>
               <option value="500">500</option>
             </select>
+            <label class="logs-tail-label">View:</label>
+            <select id="logs-view" class="logs-tail-select" title="By pod: separate section per pod. Combined: single chronological tail.">
+              <option value="pod">By pod</option>
+              <option value="time">Combined (time)</option>
+            </select>
             <button type="button" class="btn-sm" id="logs-refresh">Refresh</button>
             <label class="logs-auto-refresh">
               <input type="checkbox" id="logs-auto-refresh"> Auto-refresh (3s)
@@ -1802,7 +1807,7 @@ async function loadLogs() {
   }
 
   try {
-    var r = await fetch('/remoteapp/' + encodeURIComponent(appId) + '/logs?tail=' + tail);
+    var r = await fetch('/remoteapp/' + encodeURIComponent(appId) + '/logs?tail=' + tail + '&order=' + (document.getElementById('logs-view').value || 'pod'));
     var data = await r.json();
     var lines = data.lines || [];
     var err = data.error;
@@ -1815,9 +1820,23 @@ async function loadLogs() {
       el.innerHTML = '<span class="text-muted">No log lines (pod may be starting or not found).</span>';
       return;
     }
-    el.textContent = lines.map(function(entry) {
-      return (entry.pod || '') + ': ' + (entry.message || '');
-    }).join('\n');
+    var view = document.getElementById('logs-view').value || 'pod';
+    if (view === 'time') {
+      el.textContent = lines.map(function(entry) {
+        var prefix = (entry.ts ? entry.ts + ' ' : '') + (entry.pod || '') + ': ';
+        return prefix + (entry.message || '');
+      }).join('\n');
+    } else {
+      var byPod = {};
+      lines.forEach(function(entry) {
+        var p = entry.pod || '—';
+        if (!byPod[p]) byPod[p] = [];
+        byPod[p].push(entry.message || '');
+      });
+      el.textContent = Object.keys(byPod).map(function(podName) {
+        return '——— ' + podName + ' ———\n' + byPod[podName].join('\n');
+      }).join('\n\n');
+    }
     el.scrollTop = el.scrollHeight;
   } catch (err) {
     el.textContent = 'Failed to load logs: ' + err.message;
@@ -1825,6 +1844,7 @@ async function loadLogs() {
 }
 document.getElementById('logs-refresh').addEventListener('click', loadLogs);
 document.getElementById('logs-workload').addEventListener('change', loadLogs);
+document.getElementById('logs-view').addEventListener('change', loadLogs);
 document.getElementById('logs-auto-refresh').addEventListener('change', function() {
   if (this.checked && document.getElementById('page-logs').classList.contains('active')) {
     if (window._logsRefreshInterval) clearInterval(window._logsRefreshInterval);

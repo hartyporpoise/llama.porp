@@ -124,7 +124,8 @@ def handle_remoteapp_logs(payload: dict) -> dict:
         raise RuntimeError("app not found")
     tail = int(payload.get("tail") or 200)
     pod_name = (payload.get("pod") or "").strip() or None
-    return get_pod_logs(state.remote_apps[app_id], tail=tail, pod_name=pod_name)
+    order_by_time = payload.get("order") == "time"
+    return get_pod_logs(state.remote_apps[app_id], tail=tail, pod_name=pod_name, order_by_time=order_by_time)
 
 
 def handle_remoteapp_spec_update(payload: dict) -> dict:

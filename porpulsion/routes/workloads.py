@@ -352,6 +352,7 @@ def remoteapp_logs(app_id):
     tail = request.args.get("tail", default=200, type=int)
     tail = max(1, min(500, tail))
     pod_name = (request.args.get("pod") or "").strip() or None
+    order = request.args.get("order") or "pod"  # "pod" = by pod (default), "time" = merged by time
 
     if app_id in state.local_apps:
         ra = state.local_apps[app_id]
@@ -360,7 +361,7 @@ def remoteapp_logs(app_id):
             return jsonify({"error": "peer not connected", "lines": []}), 200
         try:
             result = get_channel(peer.name).call(
-                "remoteapp/logs", {"id": app_id, "tail": tail, "pod": pod_name}
+                "remoteapp/logs", {"id": app_id, "tail": tail, "pod": pod_name, "order": order},
             )
         except Exception as e:
             return jsonify({"error": str(e), "lines": []}), 502
@@ -368,7 +369,7 @@ def remoteapp_logs(app_id):
 
     if app_id in state.remote_apps:
         ra = state.remote_apps[app_id]
-        result = get_pod_logs(ra, tail=tail, pod_name=pod_name)
+        result = get_pod_logs(ra, tail=tail, pod_name=pod_name, order_by_time=(order == "time"))
         return jsonify(result)
 
     return jsonify({"error": "app not found", "lines": []}), 404
