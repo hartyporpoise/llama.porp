@@ -58,7 +58,7 @@ def _parse_quantity(q: str) -> float:
 def _peer_session(peer=None) -> _req.Session:
     session = _req.Session()
     session.cert = (state.AGENT_CERT_PATH, state.AGENT_KEY_PATH)
-    session.verify = tls.peer_ca_path(peer.name) if (peer and peer.ca_pem) else False
+    session.verify = tls.peer_verify_bundle(peer.name) if (peer and peer.ca_pem) else False
     return session
 
 

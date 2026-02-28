@@ -16,7 +16,7 @@ import ipaddress
 from cryptography import x509
 from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import ec
 
 
 def generate_ca_and_leaf_cert(agent_name: str,
@@ -34,7 +34,7 @@ def generate_ca_and_leaf_cert(agent_name: str,
     Returns (ca_cert_pem, ca_key_pem, leaf_cert_pem, leaf_key_pem) as bytes.
     """
     # ── CA key + self-signed CA cert ──────────────────────────
-    ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    ca_key = ec.generate_private_key(ec.SECP256R1())  # ECDSA P-256
     ca_name = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, f"{agent_name}-ca"),
         x509.NameAttribute(NameOID.ORGANIZATION_NAME, "porpulsion"),
@@ -59,7 +59,7 @@ def generate_ca_and_leaf_cert(agent_name: str,
     )
 
     # ── Leaf key + cert signed by the CA ──────────────────────
-    leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    leaf_key = ec.generate_private_key(ec.SECP256R1())  # ECDSA P-256
     leaf_name = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, agent_name),
         x509.NameAttribute(NameOID.ORGANIZATION_NAME, "porpulsion"),
@@ -134,6 +134,20 @@ def make_server_ssl_context(cert_path: str, key_path: str,
     temporarily so the peering bootstrap requests can reach us.
     """
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    # Require TLS 1.2 minimum; prefer TLS 1.3
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    # Restrict to ECDHE+AESGCM and CHACHA20 — forward secrecy, authenticated encryption
+    ctx.set_ciphers(
+        "ECDHE-ECDSA-AES256-GCM-SHA384:"
+        "ECDHE-RSA-AES256-GCM-SHA384:"
+        "ECDHE-ECDSA-AES128-GCM-SHA256:"
+        "ECDHE-RSA-AES128-GCM-SHA256:"
+        "ECDHE-ECDSA-CHACHA20-POLY1305:"
+        "ECDHE-RSA-CHACHA20-POLY1305:"
+        "TLS_AES_256_GCM_SHA384:"      # TLS 1.3
+        "TLS_AES_128_GCM_SHA256:"      # TLS 1.3
+        "TLS_CHACHA20_POLY1305_SHA256"  # TLS 1.3
+    )
     ctx.load_cert_chain(cert_path, key_path)
     if peer_ca_pems:
         ctx.verify_mode = ssl.CERT_REQUIRED
@@ -150,6 +164,38 @@ def make_server_ssl_context(cert_path: str, key_path: str,
 def peer_ca_path(peer_name: str) -> str:
     """Return the /tmp path where a peer's CA cert is stored."""
     return f"/tmp/porpulsion-peer-ca-{peer_name}.pem"
+
+
+def peer_verify_bundle(peer_name: str) -> str | bool:
+    """
+    Return a CA bundle path suitable for requests session.verify.
+
+    Concatenates the system CA bundle with the peer's self-signed CA so that
+    connections work whether the peer is behind a real TLS terminator (e.g.
+    nginx Ingress with a Let's Encrypt cert) or is serving its own mTLS cert
+    directly on a custom port.
+    """
+    import certifi
+    peer_ca = peer_ca_path(peer_name)
+    bundle_path = f"/tmp/porpulsion-verify-bundle-{peer_name}.pem"
+    try:
+        with open(certifi.where(), "rb") as f:
+            system_cas = f.read()
+        peer_ca_data = b""
+        try:
+            with open(peer_ca, "rb") as f:
+                peer_ca_data = f.read()
+        except FileNotFoundError:
+            pass
+        with open(bundle_path, "wb") as f:
+            f.write(system_cas)
+            if peer_ca_data:
+                f.write(b"\n")
+                f.write(peer_ca_data)
+        return bundle_path
+    except Exception:
+        # Fall back to peer CA only if certifi isn't available
+        return peer_ca if os.path.exists(peer_ca) else True
 
 
 # Module-level placeholders — set by agent.py at startup after generating certs.
@@ -277,7 +323,7 @@ def _generate_leaf(agent_name: str, self_ip: str,
     ca_cert = load_pem_x509_certificate(ca_cert_pem)
     ca_key_obj = load_pem_private_key(ca_key_pem, password=None)
 
-    leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    leaf_key = ec.generate_private_key(ec.SECP256R1())  # ECDSA P-256
     leaf_name = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, agent_name),
         x509.NameAttribute(NameOID.ORGANIZATION_NAME, "porpulsion"),

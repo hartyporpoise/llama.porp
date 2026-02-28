@@ -30,7 +30,7 @@ def _peer_session(peer=None):
     from porpulsion import tls
     session = http_requests.Session()
     session.cert = (tls.AGENT_CERT_PATH, tls.AGENT_KEY_PATH)
-    session.verify = tls.peer_ca_path(peer.name) if (peer and peer.ca_pem) else False
+    session.verify = tls.peer_verify_bundle(peer.name) if (peer and peer.ca_pem) else False
     return session
 
 

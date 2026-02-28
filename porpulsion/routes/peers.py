@@ -19,7 +19,7 @@ bp = Blueprint("peers", __name__)
 def _peer_session(peer: Peer | None = None) -> _req.Session:
     session = _req.Session()
     session.cert = (state.AGENT_CERT_PATH, state.AGENT_KEY_PATH)
-    session.verify = tls.peer_ca_path(peer.name) if (peer and peer.ca_pem) else False
+    session.verify = tls.peer_verify_bundle(peer.name) if (peer and peer.ca_pem) else False
     return session
 
 
