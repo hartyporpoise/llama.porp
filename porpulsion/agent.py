@@ -13,15 +13,18 @@ import threading
 from flask import Flask, render_template
 
 from porpulsion import state, tls
+from porpulsion.log_buffer import install_log_handler
 from porpulsion.routes import peers as peers_bp
 from porpulsion.routes import workloads as workloads_bp
 from porpulsion.routes import tunnels as tunnels_bp
 from porpulsion.routes import settings as settings_bp
+from porpulsion.routes import logs as logs_bp
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
 )
+install_log_handler(1000)
 log = logging.getLogger("porpulsion.agent")
 
 # ── Bootstrap config ──────────────────────────────────────────
@@ -116,6 +119,7 @@ app.register_blueprint(peers_bp.bp)
 app.register_blueprint(workloads_bp.bp)
 app.register_blueprint(tunnels_bp.bp)
 app.register_blueprint(settings_bp.bp)
+app.register_blueprint(logs_bp.bp)
 
 @app.route("/")
 @app.route("/ui")

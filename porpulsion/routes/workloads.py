@@ -7,7 +7,7 @@ from porpulsion import state, tls
 from porpulsion.models import RemoteApp, RemoteAppSpec
 from porpulsion.channel import get_channel
 from porpulsion.k8s.executor import (
-    run_workload, delete_workload, scale_workload, get_deployment_status,
+    run_workload, delete_workload, scale_workload, get_deployment_status, get_pod_logs,
 )
 
 log = logging.getLogger("porpulsion.routes.workloads")
@@ -345,6 +345,33 @@ def remoteapp_detail(app_id):
         return jsonify({"app": ra.to_dict(), "k8s": detail})
 
     return jsonify({"error": "app not found"}), 404
+
+
+@bp.route("/remoteapp/<app_id>/logs")
+def remoteapp_logs(app_id):
+    tail = request.args.get("tail", default=200, type=int)
+    tail = max(1, min(500, tail))
+    pod_name = (request.args.get("pod") or "").strip() or None
+
+    if app_id in state.local_apps:
+        ra = state.local_apps[app_id]
+        peer = state.peers.get(ra.target_peer) or next(iter(state.peers.values()), None)
+        if not peer:
+            return jsonify({"error": "peer not connected", "lines": []}), 200
+        try:
+            result = get_channel(peer.name).call(
+                "remoteapp/logs", {"id": app_id, "tail": tail, "pod": pod_name}
+            )
+        except Exception as e:
+            return jsonify({"error": str(e), "lines": []}), 502
+        return jsonify(result)
+
+    if app_id in state.remote_apps:
+        ra = state.remote_apps[app_id]
+        result = get_pod_logs(ra, tail=tail, pod_name=pod_name)
+        return jsonify(result)
+
+    return jsonify({"error": "app not found", "lines": []}), 404
 
 
 

@@ -115,6 +115,18 @@ def handle_remoteapp_detail(payload: dict) -> dict:
     return get_deployment_status(state.remote_apps[app_id])
 
 
+def handle_remoteapp_logs(payload: dict) -> dict:
+    """Return pod logs for a RemoteApp (executing on this cluster)."""
+    from porpulsion import state
+    from porpulsion.k8s.executor import get_pod_logs
+    app_id = payload.get("id", "")
+    if app_id not in state.remote_apps:
+        raise RuntimeError("app not found")
+    tail = int(payload.get("tail") or 200)
+    pod_name = (payload.get("pod") or "").strip() or None
+    return get_pod_logs(state.remote_apps[app_id], tail=tail, pod_name=pod_name)
+
+
 def handle_remoteapp_spec_update(payload: dict) -> dict:
     """Apply a new spec to a RemoteApp on the executing side."""
     from porpulsion import state

@@ -308,3 +308,47 @@ def get_deployment_status(remote_app) -> dict:
         if e.status == 404:
             return {"error": "deployment not found"}
         raise
+
+
+def get_pod_logs(remote_app, tail: int = 200, pod_name: str | None = None) -> dict:
+    """
+    Return recent log lines from pods of a RemoteApp.
+    If pod_name is set, only that pod; otherwise all pods (aggregated with pod prefix).
+    Returns {"lines": [{"pod": str, "message": str}, ...]} or {"error": str}.
+    """
+    try:
+        pods = core_v1.list_namespaced_pod(
+            NAMESPACE,
+            label_selector=f"porpulsion.io/remote-app-id={remote_app.id}",
+        )
+        if pod_name:
+            pods.items = [p for p in pods.items if p.metadata.name == pod_name]
+        if not pods.items:
+            return {"lines": [], "error": "no pods found" if pod_name else "no pods found"}
+
+        lines: list[dict] = []
+        per_pod_tail = max(50, tail // len(pods.items)) if len(pods.items) > 1 else tail
+
+        for p in pods.items:
+            name = p.metadata.name
+            try:
+                log_text = core_v1.read_namespaced_pod_log(
+                    name=name,
+                    namespace=NAMESPACE,
+                    tail_lines=per_pod_tail,
+                    timestamps=False,
+                )
+            except client.ApiException as e:
+                if e.status == 404:
+                    lines.append({"pod": name, "message": "(pod not found)"})
+                else:
+                    lines.append({"pod": name, "message": f"(failed to read logs: {e.reason})"})
+                continue
+            for line in (log_text or "").strip().splitlines():
+                lines.append({"pod": name, "message": line})
+
+        return {"lines": lines}
+    except client.ApiException as e:
+        if e.status == 404:
+            return {"lines": [], "error": "deployment not found"}
+        return {"lines": [], "error": str(e.reason)}
