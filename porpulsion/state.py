@@ -5,7 +5,10 @@ All route modules import from here so they share the same live dicts.
 Config constants (AGENT_NAME, SELF_URL, etc.) are set once at startup
 by porpulsion/agent.py and read by routes at call time.
 """
+from typing import TYPE_CHECKING
 from porpulsion.models import Peer, RemoteApp, TunnelRequest, AgentSettings
+if TYPE_CHECKING:
+    from porpulsion.channel import PeerChannel
 
 # ── Runtime config (set by agent.py at startup) ──────────────
 AGENT_NAME: str = ""
@@ -25,6 +28,9 @@ pending_approval: dict[str, dict]        = {}   # id -> {id, name, spec, source_
 tunnel_requests: dict[str, TunnelRequest] = {}  # pending/approved/rejected tunnel requests
 settings: AgentSettings = AgentSettings()
 invite_token: str = ""
+
+# peer_name -> PeerChannel (live WebSocket connection to that peer)
+peer_channels: "dict[str, PeerChannel]" = {}
 
 # Callback set by agent.py so route blueprints can trigger mTLS server rebuilds
 _rebuild_mtls_callback = None

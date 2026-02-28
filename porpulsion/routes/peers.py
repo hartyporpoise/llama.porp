@@ -10,6 +10,7 @@ from flask import Blueprint, request, jsonify
 from porpulsion import state, tls
 from porpulsion.models import Peer
 from porpulsion.peering import initiate_peering
+from porpulsion.channel import open_channel_to
 
 log = logging.getLogger("porpulsion.routes.peers")
 
@@ -41,7 +42,12 @@ def status():
 
 @bp.route("/peers")
 def list_peers():
-    result = [p.to_dict() for p in state.peers.values()]
+    result = []
+    for p in state.peers.values():
+        d = p.to_dict()
+        ch = state.peer_channels.get(p.name)
+        d["channel"] = "connected" if (ch and ch.is_connected()) else "disconnected"
+        result.append(d)
     for url, info in state.pending_peers.items():
         entry = {
             "name": info.get("name", url),
@@ -93,6 +99,8 @@ def accept_peer():
             _rebuild_mtls_server()
             tls.save_peers(state.NAMESPACE, state.peers)
             log.info("Peering confirmed by %s — fully connected", peer_name)
+            # We are the initiator — open outbound WS channel to the accepting peer
+            open_channel_to(peer_name, peer_url, ca_pem=peer_ca)
             return jsonify({"name": state.AGENT_NAME, "status": "peered",
                             "ca": state.AGENT_CA_PEM.decode()})
         log.warning("accept_peer: unexpected ca-only request from %s (no matching pending)", peer_name)
@@ -162,6 +170,8 @@ def accept_inbound(req_id):
             _rebuild_mtls_server()
             tls.save_peers(state.NAMESPACE, state.peers)
             log.info("Accepted and confirmed peering with %s", peer_name)
+            # We are the acceptor — the initiator will open the WS channel to us,
+            # so we don't need to connect outbound here.
             return jsonify({"ok": True, "peer": peer_name})
         log.warning("accept_inbound: initiator returned %s: %s", resp.status_code, resp.text[:200])
         state.pending_inbound[req_id] = info
@@ -190,16 +200,15 @@ def remove_peer(peer_name):
     log.info("Removed peer %s", peer_name)
 
     try:
-        session = _peer_session()
-        session.verify = False
-        _urllib3.disable_warnings(_urllib3.exceptions.InsecureRequestWarning)
-        session.post(
-            f"{peer.url}/agent/peer/disconnect",
-            json={"name": state.AGENT_NAME},
-            timeout=3,
-        )
+        from porpulsion.channel import get_channel
+        get_channel(peer_name, wait=2.0).push("peer/disconnect", {"name": state.AGENT_NAME})
     except Exception as exc:
         log.debug("Could not notify %s of disconnection: %s", peer_name, exc)
+
+    # Close and remove the WS channel
+    ch = state.peer_channels.pop(peer_name, None)
+    if ch:
+        ch.close()
 
     for ra in list(state.local_apps.values()):
         if ra.target_peer == peer_name:

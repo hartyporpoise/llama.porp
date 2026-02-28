@@ -1,22 +1,15 @@
+import base64
 import logging
 
-import requests as _req
 from flask import Blueprint, request, jsonify, Response
 
-from porpulsion import state, tls
+from porpulsion import state
 from porpulsion.peering import verify_peer, identify_peer
+from porpulsion.channel import get_channel
 
 log = logging.getLogger("porpulsion.routes.tunnels")
 
 bp = Blueprint("tunnels", __name__)
-
-
-def _peer_session(peer=None) -> _req.Session:
-    session = _req.Session()
-    session.cert = (state.AGENT_CERT_PATH, state.AGENT_KEY_PATH)
-    session.verify = tls.peer_verify_bundle(peer.name) if (peer and peer.ca_pem) else False
-    return session
-
 
 _PROXY_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
 
@@ -47,32 +40,27 @@ def proxy_remoteapp(app_id, port, subpath):
     if not peer:
         return jsonify({"error": "peer not connected"}), 503
 
-    session = _peer_session(peer)
-    remote_url = f"{peer.url}/agent/remoteapp/{app_id}/proxy-remote/{port}"
-    if subpath:
-        remote_url += f"/{subpath}"
     qs = request.query_string.decode()
-    if qs:
-        remote_url += "?" + qs
-
+    path = (subpath + ("?" + qs if qs else "")) if subpath else ("?" + qs if qs else "")
     fwd_headers = {k: v for k, v in request.headers if k.lower() not in _HOP_BY_HOP}
 
     try:
-        resp = session.request(
-            method=request.method,
-            url=remote_url,
-            headers=fwd_headers,
-            data=request.get_data(),
-            timeout=30,
-            allow_redirects=False,
-            stream=False,
-        )
+        ch = get_channel(peer.name)
+        result = ch.call("proxy/request", {
+            "app_id": app_id,
+            "port": port,
+            "method": request.method,
+            "path": path,
+            "headers": fwd_headers,
+            "body": base64.b64encode(request.get_data()).decode(),
+        }, timeout=30)
     except Exception as exc:
         return jsonify({"error": f"failed to reach peer: {exc}"}), 502
 
-    resp_headers = {k: v for k, v in resp.headers.items()
+    resp_headers = {k: v for k, v in result.get("headers", {}).items()
                     if k.lower() not in _HOP_BY_HOP}
-    return Response(resp.content, status=resp.status_code, headers=resp_headers)
+    body = base64.b64decode(result.get("body", ""))
+    return Response(body, status=result.get("status", 502), headers=resp_headers)
 
 
 # ── Peer-facing proxy (executing side) ────────────────────────

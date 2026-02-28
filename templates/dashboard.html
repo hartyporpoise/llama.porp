@@ -255,6 +255,7 @@
     .badge-handshake { background: var(--purple-dim); color: var(--accent2);}
     .badge-inbound   { background: var(--blue-dim);   color: var(--blue);   }
     .badge-mtls      { background: var(--green-dim);  color: var(--green);  }
+    .badge-mtls .badge-dot { background: var(--green); }
 
     /* ── Buttons ─────────────────────────────────────── */
     button {
@@ -933,7 +934,7 @@
           <div class="card-body no-pad">
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Name</th><th>URL</th><th>Since</th></tr></thead>
+                <thead><tr><th>Name</th><th>URL</th><th>Channel</th><th>Since</th></tr></thead>
                 <tbody id="overview-peers-body"></tbody>
               </table>
             </div>
@@ -1008,15 +1009,15 @@
           <div class="card-body">
             <form id="connect-peer-form">
               <div class="form-group">
-                <label class="form-label">Peer mTLS URL</label>
-                <input type="text" id="new-peer-url" placeholder="https://192.168.1.100:30443">
+                <label class="form-label">Peer URL</label>
+                <input type="text" id="new-peer-url" placeholder="https://porpulsion.example.com">
               </div>
               <div class="form-group">
                 <label class="form-label">Their invite token</label>
                 <input type="text" id="new-peer-token" placeholder="paste their invite token here" autocomplete="off">
               </div>
               <div class="form-group">
-                <label class="form-label">Their CA fingerprint (SHA-256)</label>
+                <label class="form-label">Their CA fingerprint</label>
                 <input type="text" id="new-peer-fp" placeholder="paste their CA fingerprint here" autocomplete="off" style="font-family:monospace;font-size:0.75rem;">
                 <span class="form-hint">Prevents MITM during bootstrap. Get this from their Settings → Connection Info page.</span>
               </div>
@@ -1033,7 +1034,7 @@
             <p class="text-sm text-muted" style="margin-bottom:1rem;">
               Share your endpoint URL, invite token, and CA fingerprint with the peer who wants to connect to you. The token is single-use and rotates automatically after use.
             </p>
-            <div class="section-label">mTLS endpoint URL</div>
+            <div class="section-label">Endpoint URL</div>
             <div class="code-box">
               <span class="code-val" id="token-url">loading…</span>
               <button class="btn-sm" onclick="copyText('token-url', this)">Copy</button>
@@ -1044,7 +1045,7 @@
               <button class="eye-btn" onclick="toggleSecret('token-key', this)" title="Show/hide"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 10s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="10" cy="10" r="2.5"/></svg></button>
               <button class="btn-sm" onclick="copySecret('token-key', this)">Copy</button>
             </div>
-            <div class="section-label" style="margin-top:1rem;">CA fingerprint (SHA-256)</div>
+            <div class="section-label" style="margin-top:1rem;">CA fingerprint</div>
             <div class="secret-box">
               <span class="secret-val masked" id="token-fp-peers" data-value="" style="font-size:0.68rem;">••••••••••••••••••••••••••••••••••••••••••••••••</span>
               <button class="eye-btn" onclick="toggleSecret('token-fp-peers', this)" title="Show/hide"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 10s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="10" cy="10" r="2.5"/></svg></button>
@@ -1061,7 +1062,7 @@
           <div class="card-body no-pad">
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Name</th><th>URL</th><th>mTLS</th><th>Connected</th><th></th></tr></thead>
+                <thead><tr><th>Name</th><th>URL</th><th>Peering</th><th>Channel</th><th>Connected</th><th></th></tr></thead>
                 <tbody id="all-peers-body"></tbody>
               </table>
             </div>
@@ -1161,7 +1162,7 @@
         <div class="card">
           <div class="card-header"><h2>Connect Credentials</h2></div>
           <div class="card-body">
-            <div class="section-label">mTLS endpoint URL</div>
+            <div class="section-label">Endpoint URL</div>
             <div class="code-box">
               <span class="code-val" id="settings-token-url">loading…</span>
               <button class="btn-sm" onclick="copyText('settings-token-url', this)">Copy</button>
@@ -1172,7 +1173,7 @@
               <button class="eye-btn" onclick="toggleSecret('settings-token-key', this)" title="Show/hide"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 10s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="10" cy="10" r="2.5"/></svg></button>
               <button class="btn-sm" onclick="copySecret('settings-token-key', this)">Copy</button>
             </div>
-            <div class="section-label" style="margin-top:1rem;">CA fingerprint (SHA-256)</div>
+            <div class="section-label" style="margin-top:1rem;">CA fingerprint</div>
             <div class="secret-box">
               <span class="secret-val masked" id="token-fp" data-value="" style="font-size:0.68rem;">••••••••••••••••••••••••••••••••••••••••••••••••</span>
               <button class="eye-btn" onclick="toggleSecret('token-fp', this)" title="Show/hide"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 10s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="10" cy="10" r="2.5"/></svg></button>
@@ -2259,9 +2260,14 @@ function renderOverviewPeers(peers) {
   if (!connected.length) { body.innerHTML = ''; empty.style.display = ''; return; }
   empty.style.display = 'none';
   body.innerHTML = connected.map(function(p) {
+    var wsConn = p.channel === 'connected';
+    var chanBadge = wsConn
+      ? '<span class="badge badge-mtls"><span class="badge-dot"></span>live</span>'
+      : '<span class="badge badge-failed">offline</span>';
     return '<tr>'
-      + '<td><strong>' + p.name + '</strong></td>'
-      + '<td class="mono">' + (p.url || '') + '</td>'
+      + '<td><strong>' + _esc(p.name) + '</strong></td>'
+      + '<td class="mono">' + _esc(p.url || '') + '</td>'
+      + '<td>' + chanBadge + '</td>'
       + '<td class="time-ago">' + timeAgo(p.connected_at) + '</td>'
       + '</tr>';
   }).join('');
@@ -2281,11 +2287,18 @@ function renderAllPeers(peers) {
     var isFail  = p.status === 'failed';
     var isPend  = isConn || isAwait || isFail;
 
-    var statusCell = isPend
+    var peeringCell = isPend
       ? (isConn  ? '<span class="badge badge-connecting">connecting</span>'
       : isAwait  ? '<span class="badge badge-handshake">awaiting</span>'
       : '<span class="badge badge-failed">failed</span>')
-      : '<span class="badge badge-mtls"><span class="badge-dot"></span>mTLS</span>';
+      : '<span class="badge badge-ready"><span class="badge-dot"></span>peered</span>';
+
+    var wsConn = p.channel === 'connected';
+    var channelCell = isPend
+      ? '<span class="badge badge-pending">—</span>'
+      : (wsConn
+          ? '<span class="badge badge-mtls"><span class="badge-dot"></span>live</span>'
+          : '<span class="badge badge-failed">offline</span>');
 
     var actionBtn = '';
     if (isConn || isAwait) {
@@ -2304,7 +2317,8 @@ function renderAllPeers(peers) {
       + (isConn ? ' <span class="text-muted text-sm">attempt ' + (p.attempts||1) + '</span>' : '')
       + '</td>'
       + '<td class="mono">' + _esc(p.url || '') + '</td>'
-      + '<td>' + statusCell + '</td>'
+      + '<td>' + peeringCell + '</td>'
+      + '<td>' + channelCell + '</td>'
       + '<td class="time-ago">' + timeAgo(p.connected_at) + '</td>'
       + '<td>' + actionBtn + '</td>'
       + '</tr>';
@@ -2332,7 +2346,7 @@ async function cancelConnecting(url) {
 async function retryConnecting(url) {
   var token = await showPrompt('Retry connection (1/2)', 'Enter the invite token for:\n' + url, 'Invite token…');
   if (!token || !token.trim()) return;
-  var fp = await showPrompt('Retry connection (2/2)', 'Enter the CA fingerprint for:\n' + url, 'CA fingerprint (SHA-256)…');
+  var fp = await showPrompt('Retry connection (2/2)', 'Enter the CA fingerprint for:\n' + url, 'CA fingerprint…');
   if (!fp || !fp.trim()) return;
   var r = await fetch('/peers/retry', {
     method: 'POST',

@@ -2,12 +2,12 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-import requests as _req
 from flask import Blueprint, request, jsonify
 
 from porpulsion import state, tls
 from porpulsion.models import RemoteApp, RemoteAppSpec
 from porpulsion.peering import verify_peer
+from porpulsion.channel import get_channel
 from porpulsion.k8s.executor import (
     run_workload, delete_workload, scale_workload, get_deployment_status,
 )
@@ -54,12 +54,6 @@ def _parse_quantity(q: str) -> float:
         return float(q[:-1]) / 1000.0
     return float(q)
 
-
-def _peer_session(peer=None) -> _req.Session:
-    session = _req.Session()
-    session.cert = (state.AGENT_CERT_PATH, state.AGENT_KEY_PATH)
-    session.verify = tls.peer_verify_bundle(peer.name) if (peer and peer.ca_pem) else False
-    return session
 
 
 def _check_image_policy(image: str) -> str | None:
@@ -194,18 +188,11 @@ def create_remoteapp():
     state.local_apps[ra.id] = ra
 
     try:
-        session = _peer_session(peer)
-        resp = session.post(
-            f"{peer.url}/agent/remoteapp/receive",
-            json={"id": ra.id, "name": ra.name, "spec": ra.spec.to_dict(),
-                  "source_peer": state.AGENT_NAME},
-            timeout=5,
-        )
-        if resp.status_code != 200:
-            err = resp.json() if resp.content else {}
-            msg = err.get("error", f"peer returned {resp.status_code}")
-            del state.local_apps[ra.id]
-            return jsonify({"error": msg}), 502
+        ch = get_channel(peer.name)
+        ch.call("remoteapp/receive", {
+            "id": ra.id, "name": ra.name,
+            "spec": ra.spec.to_dict(), "source_peer": state.AGENT_NAME,
+        })
     except Exception as e:
         del state.local_apps[ra.id]
         return jsonify({"error": f"failed to reach peer: {e}"}), 502
@@ -235,7 +222,7 @@ def receive_remoteapp():
 
     app_id = data.get("id") or uuid.uuid4().hex[:8]
     source = state.peers.get(source_peer)
-    callback_url = source.url if source else ""
+    callback_url = source_peer  # channel key — not a URL, routed via WS channel
 
     if state.settings.require_remoteapp_approval:
         entry = {
@@ -300,18 +287,14 @@ def reject_remoteapp(app_id):
     tls.save_state_configmap(state.NAMESPACE, state.local_apps, state.settings,
                              state.pending_approval)
     # Notify the source peer the app was rejected so their status updates
-    source = state.peers.get(entry["source_peer"])
-    if source:
-        try:
-            session = _peer_session(source)
-            session.post(
-                f"{source.url}/agent/remoteapp/{app_id}/status",
-                json={"status": "Rejected",
-                      "updated_at": datetime.now(timezone.utc).isoformat()},
-                timeout=5,
-            )
-        except Exception as e:
-            log.warning("Could not notify source of rejection: %s", e)
+    try:
+        ch = get_channel(entry["source_peer"])
+        ch.push("remoteapp/status", {
+            "id": app_id, "status": "Rejected",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as e:
+        log.warning("Could not notify source of rejection: %s", e)
     return jsonify({"ok": True})
 
 
@@ -346,8 +329,7 @@ def delete_remoteapp(app_id):
         peer = state.peers.get(ra.target_peer) or next(iter(state.peers.values()), None)
         if peer:
             try:
-                session = _peer_session(peer)
-                session.delete(f"{peer.url}/agent/remoteapp/{app_id}/remote", timeout=5)
+                get_channel(peer.name).call("remoteapp/delete", {"id": app_id})
             except Exception as e:
                 log.warning("Failed to notify peer of deletion: %s", e)
         state.local_apps[app_id].status = "Deleted"
@@ -360,18 +342,13 @@ def delete_remoteapp(app_id):
         delete_workload(ra)
         ra.status = "Deleted"
         del state.remote_apps[app_id]
-        source = state.peers.get(ra.source_peer)
-        if source:
-            try:
-                session = _peer_session(source)
-                session.post(
-                    f"{source.url}/agent/remoteapp/{app_id}/status",
-                    json={"status": "Deleted",
-                          "updated_at": datetime.now(timezone.utc).isoformat()},
-                    timeout=5,
-                )
-            except Exception as exc:
-                log.warning("Failed to notify source peer of deletion: %s", exc)
+        try:
+            get_channel(ra.source_peer).push("remoteapp/status", {
+                "id": app_id, "status": "Deleted",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as exc:
+            log.warning("Failed to notify source peer of deletion: %s", exc)
         return jsonify({"ok": True})
 
     return jsonify({"error": "app not found"}), 404
@@ -410,16 +387,9 @@ def scale_remoteapp(app_id):
         if not peer:
             return jsonify({"error": "peer not connected"}), 503
         try:
-            session = _peer_session(peer)
-            resp = session.post(
-                f"{peer.url}/agent/remoteapp/{app_id}/scale/remote",
-                json={"replicas": replicas},
-                timeout=5,
-            )
-            if resp.ok:
-                ra.spec.replicas = replicas
-                return jsonify({"ok": True, "replicas": replicas})
-            return jsonify({"error": resp.json().get("error", "peer error")}), resp.status_code
+            get_channel(peer.name).call("remoteapp/scale", {"id": app_id, "replicas": replicas})
+            ra.spec.replicas = replicas
+            return jsonify({"ok": True, "replicas": replicas})
         except Exception as e:
             return jsonify({"error": str(e)}), 502
 
@@ -464,9 +434,7 @@ def remoteapp_detail(app_id):
         if not peer:
             return jsonify({"error": "peer not connected", "app": ra.to_dict()}), 200
         try:
-            session = _peer_session(peer)
-            resp = session.get(f"{peer.url}/agent/remoteapp/{app_id}/detail/remote", timeout=5)
-            detail = resp.json() if resp.ok else {}
+            detail = get_channel(peer.name).call("remoteapp/detail", {"id": app_id})
         except Exception as e:
             detail = {"error": str(e)}
         return jsonify({"app": ra.to_dict(), "k8s": detail})
@@ -504,14 +472,9 @@ def update_remoteapp_spec(app_id):
         return jsonify({"error": "peer not connected"}), 503
 
     try:
-        session = _peer_session(peer)
-        resp = session.put(
-            f"{peer.url}/agent/remoteapp/{app_id}/spec/remote",
-            json={"spec": new_spec, "name": ra.name, "source_peer": state.AGENT_NAME},
-            timeout=5,
-        )
-        if not resp.ok:
-            return jsonify({"error": resp.json().get("error", "peer error")}), resp.status_code
+        get_channel(peer.name).call("remoteapp/spec-update", {
+            "id": app_id, "spec": new_spec,
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
@@ -539,6 +502,5 @@ def update_remoteapp_spec_remote(app_id):
 
     ra.spec = parsed_spec
     source = state.peers.get(ra.source_peer)
-    callback_url = source.url if source else ""
-    run_workload(ra, callback_url, peer=source)
+    run_workload(ra, ra.source_peer, peer=source)
     return jsonify({"ok": True})

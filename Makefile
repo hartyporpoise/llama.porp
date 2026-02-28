@@ -65,7 +65,7 @@ deploy: ## Full deploy: start clusters, build image, helm install both agents
 		KUBECONFIG=/tmp/kubeconfig-a.yaml helm upgrade --install porpulsion /charts/porpulsion \
 			--create-namespace --namespace porpulsion \
 			--set agent.agentName=cluster-a \
-			--set agent.selfUrl=https://$$IP_A:30443 \
+			--set agent.selfUrl=http://$$IP_A:30080 \
 			--set agent.image=porpulsion-agent:local \
 			--set agent.pullPolicy=Never \
 			--set service.type=NodePort \
@@ -86,7 +86,7 @@ deploy: ## Full deploy: start clusters, build image, helm install both agents
 		KUBECONFIG=/tmp/kubeconfig-b.yaml helm upgrade --install porpulsion /charts/porpulsion \
 			--create-namespace --namespace porpulsion \
 			--set agent.agentName=cluster-b \
-			--set agent.selfUrl=https://$$IP_B:30443 \
+			--set agent.selfUrl=http://$$IP_B:30080 \
 			--set agent.image=porpulsion-agent:local \
 			--set agent.pullPolicy=Never \
 			--set service.type=NodePort \
@@ -128,7 +128,7 @@ redeploy: ## Rebuild agent image + helm upgrade (clusters must already be runnin
 		KUBECONFIG=/tmp/kubeconfig-a.yaml helm upgrade --install porpulsion /charts/porpulsion \
 			--create-namespace --namespace porpulsion \
 			--set agent.agentName=cluster-a \
-			--set agent.selfUrl=https://$$IP_A:30443 \
+			--set agent.selfUrl=http://$$IP_A:30080 \
 			--set agent.image=porpulsion-agent:local \
 			--set agent.pullPolicy=Never \
 			--set service.type=NodePort \
@@ -148,7 +148,7 @@ redeploy: ## Rebuild agent image + helm upgrade (clusters must already be runnin
 		KUBECONFIG=/tmp/kubeconfig-b.yaml helm upgrade --install porpulsion /charts/porpulsion \
 			--create-namespace --namespace porpulsion \
 			--set agent.agentName=cluster-b \
-			--set agent.selfUrl=https://$$IP_B:30443 \
+			--set agent.selfUrl=http://$$IP_B:30080 \
 			--set agent.image=porpulsion-agent:local \
 			--set agent.pullPolicy=Never \
 			--set service.type=NodePort \

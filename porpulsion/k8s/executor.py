@@ -2,7 +2,6 @@ import logging
 import os
 import threading
 import time
-import requests as http_requests
 from datetime import datetime, timezone
 from kubernetes import client, config
 
@@ -25,38 +24,27 @@ NAMESPACE = os.environ.get("PORPULSION_NAMESPACE", "porpulsion")
 _stop_events: dict[str, threading.Event] = {}
 
 
-def _peer_session(peer=None):
-    """Build a requests.Session with mTLS client cert and peer CA verification."""
-    from porpulsion import tls
-    session = http_requests.Session()
-    session.cert = (tls.AGENT_CERT_PATH, tls.AGENT_KEY_PATH)
-    session.verify = tls.peer_verify_bundle(peer.name) if (peer and peer.ca_pem) else False
-    return session
-
 
 def _report_status(remote_app, callback_url, status, peer=None, retries=3):
-    """Report status back to the originating peer via mTLS. Retries on transient failure."""
+    """
+    Report status back to the originating peer via the WS channel.
+    callback_url is now the peer name (channel key), not an HTTP URL.
+    """
     remote_app.status = status
     remote_app.updated_at = datetime.now(timezone.utc).isoformat()
     log.info("App %s (%s) -> %s", remote_app.name, remote_app.id, status)
     if not callback_url:
         return
-    payload = {"status": status, "updated_at": remote_app.updated_at}
+    payload = {"id": remote_app.id, "status": status, "updated_at": remote_app.updated_at}
     for attempt in range(retries):
         try:
-            session = _peer_session(peer)
-            resp = session.post(
-                f"{callback_url}/agent/remoteapp/{remote_app.id}/status",
-                json=payload,
-                timeout=5,
-            )
-            if resp.ok:
-                return
-            log.warning("Status callback got %s (attempt %d)", resp.status_code, attempt + 1)
+            from porpulsion.channel import get_channel
+            get_channel(callback_url).push("remoteapp/status", payload)
+            return
         except Exception as e:
-            log.warning("Failed to report status to %s (attempt %d): %s", callback_url, attempt + 1, e)
+            log.warning("Failed to push status to %s (attempt %d): %s", callback_url, attempt + 1, e)
         if attempt < retries - 1:
-            time.sleep(2 ** attempt)  # 1s, 2s backoff
+            time.sleep(2 ** attempt)
 
 
 def run_workload(remote_app, callback_url, peer=None):

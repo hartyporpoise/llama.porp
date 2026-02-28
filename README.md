@@ -82,13 +82,13 @@ helm upgrade --install porpulsion oci://ghcr.io/hartyporpoise/porpulsion \
   --create-namespace \
   --namespace porpulsion \
   --set agent.agentName=my-cluster \
-  --set agent.selfUrl=https://agent.example.com:8443
+  --set agent.selfUrl=https://porpulsion.example.com
 ```
 
 Both services default to `ClusterIP`. Expose them with your own Ingress or LoadBalancer:
 
-- **Dashboard** (HTTP, port 8000) — standard nginx Ingress, any path
-- **mTLS agent** (TLS, port 8443) — nginx routes `/agent` to this port; peer agents communicate only on `/agent/*` paths so it stays cleanly separated from the dashboard
+- **Dashboard** (HTTP, port 8000) — standard nginx Ingress, any path. Set `agent.selfUrl` to this hostname — peers use it for the initial invite and the persistent WebSocket channel.
+- **mTLS agent** (TLS, port 8443) — optional direct TCP LoadBalancer; only needed if you want true end-to-end mTLS without nginx TLS termination
 
 ```sh
 # Quick access without an Ingress
@@ -101,6 +101,17 @@ kubectl port-forward svc/porpulsion 8443:8443 -n porpulsion   # mTLS agent
 Porpulsion works with a standard nginx Ingress on a single hostname. nginx terminates TLS,
 requests the peer's client certificate, and forwards it to the pod as a header. The agent
 verifies the certificate in software against its known peer CAs.
+
+The `configuration-snippet` annotation is required. Many nginx ingress deployments disable
+it by default for security reasons. Enable it in the ingress controller ConfigMap:
+
+```yaml
+# kubectl edit configmap ingress-nginx-controller -n ingress-nginx
+data:
+  allow-snippet-annotations: "true"
+```
+
+Then apply the Ingress:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -117,6 +128,7 @@ metadata:
       ssl_verify_client optional_no_ca;
 
       # Forward the client cert to the pod as a URL-encoded PEM header.
+      # The agent reads this from the X-SSL-Client-Cert header.
       proxy_set_header X-SSL-Client-Cert $ssl_client_escaped_cert;
 spec:
   ingressClassName: nginx
@@ -128,8 +140,17 @@ spec:
     - host: porpulsion.example.com
       http:
         paths:
-          # Peer-to-peer agent traffic — routes to the mTLS listener on port 8443.
-          # nginx terminates TLS and forwards the client cert via header.
+          # WebSocket peer channel — must route to port 8000 (Flask), not 8443.
+          # nginx.ingress.kubernetes.io/proxy-read-timeout must be long enough
+          # to keep the persistent WS connection alive.
+          - path: /agent/ws
+            pathType: Exact
+            backend:
+              service:
+                name: porpulsion
+                port:
+                  number: 8000
+          # Peer-to-peer HTTP API calls — routes to port 8443 (mTLS listener).
           - path: /agent(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
@@ -147,22 +168,23 @@ spec:
                   number: 8000
 ```
 
-Set `agent.selfUrl` to `https://porpulsion.example.com` in your Helm values so peer agents
-know where to reach the `/agent/*` endpoints.
+Set `agent.selfUrl` to `https://porpulsion.example.com` in your Helm values.
 
 > **Security note:** With `ssl_verify_client optional_no_ca`, nginx forwards whatever cert
 > the client presents without verifying the chain. The porpulsion agent performs the trust
 > check in software using the CA certs exchanged during peering. This is safe as long as
-> port 8443 is only reachable via nginx (not directly exposed). For fully hardware-enforced
-> mTLS, expose port 8443 via a TCP `LoadBalancer` service and point `agent.selfUrl`
-> directly at it instead.
+> port 8443 is not directly exposed — only reachable via nginx.
+
+**Alternative — TCP LoadBalancer (true end-to-end mTLS, no snippet annotation needed):**
+Expose port 8443 via a separate `LoadBalancer` service and point `agent.selfUrl` directly
+at it (e.g. `https://agent.example.com:8443`). nginx is only used for the dashboard.
 
 ### Helm values
 
 | Value | Default | Description |
 |-------|---------|-------------|
 | `agent.agentName` | `""` | Human-readable cluster name shown in the dashboard |
-| `agent.selfUrl` | `""` | Externally reachable mTLS URL, e.g. `https://agent.example.com:8443`. Auto-detected if unset. |
+| `agent.selfUrl` | `""` | Externally reachable URL for this agent, used for peering and the persistent WebSocket channel. In production set to the nginx HTTPS hostname, e.g. `https://porpulsion.example.com`. Auto-detected if unset. |
 | `agent.image` | `porpulsion-agent:latest` | Container image |
 | `agent.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `namespace` | `porpulsion` | Namespace for the agent and all RemoteApp workloads |

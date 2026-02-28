@@ -20,6 +20,7 @@ from porpulsion.routes import peers as peers_bp
 from porpulsion.routes import workloads as workloads_bp
 from porpulsion.routes import tunnels as tunnels_bp
 from porpulsion.routes import settings as settings_bp
+from porpulsion.routes import ws as ws_bp
 
 logging.basicConfig(
     level=logging.INFO,
@@ -103,6 +104,20 @@ for _entry in _saved.get("pending_approval", []):
 log.info("Restored %d peer(s), %d local app(s), %d pending approval(s) from persistent storage",
          len(state.peers), len(state.local_apps), len(state.pending_approval))
 
+# Re-open WS channels for any peers restored from persistent storage.
+# Runs after the Flask app starts (deferred so the WS endpoint is registered).
+# Both sides attempt outbound — whichever connects first stays up. If the peer
+# also connects inbound simultaneously, accept_channel replaces the outbound
+# channel cleanly. This ensures reconnection works regardless of which side
+# restarted.
+def _reconnect_persisted_peers():
+    import time as _time
+    _time.sleep(3)  # let the server fully start before connecting outbound
+    from porpulsion.channel import open_channel_to
+    for _p in state.peers.values():
+        log.info("Re-opening WS channel to persisted peer %s", _p.name)
+        open_channel_to(_p.name, _p.url, _p.ca_pem)
+
 # ── Flask app ─────────────────────────────────────────────────
 
 _TEMPLATES = pathlib.Path(__file__).parent.parent / "templates"
@@ -124,6 +139,10 @@ app.register_blueprint(settings_bp.bp)
 app.register_blueprint(peers_bp.bp,     url_prefix="/agent", name="peers_agent")
 app.register_blueprint(workloads_bp.bp, url_prefix="/agent", name="workloads_agent")
 app.register_blueprint(tunnels_bp.bp,   url_prefix="/agent", name="tunnels_agent")
+
+# WebSocket channel endpoint — flask-sock binds the route directly on the app
+from porpulsion.routes.ws import sock as _ws_sock
+_ws_sock.init_app(app)
 
 
 @app.route("/")
@@ -253,7 +272,7 @@ def _reconstruct_remote_apps():
             # status will eventually transition to Ready.
             if not already_ready:
                 peer = state.peers.get(source_peer)
-                callback_url = peer.url if peer else ""
+                callback_url = peer.name if peer else ""
                 from porpulsion.k8s.executor import run_workload
                 # run_workload restarts the deployment — we only want to resume
                 # the status watcher. Kick a lightweight watcher thread instead.
@@ -291,5 +310,6 @@ if __name__ == "__main__":
     log.info("mTLS listener started on port 8443")
 
     threading.Thread(target=_reconstruct_remote_apps, daemon=True).start()
+    threading.Thread(target=_reconnect_persisted_peers, daemon=True).start()
 
-    app.run(host="0.0.0.0", port=8000)
+    app.run(host="0.0.0.0", port=8000, threaded=True)
