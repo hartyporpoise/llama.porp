@@ -361,7 +361,7 @@
       padding: 0.55rem 0.6rem;
       white-space: pre;
       overflow: auto;
-      color: transparent; /* text invisible — only coloured spans show */
+      color: var(--text); /* fallback for un-highlighted text */
       z-index: 2; /* sits above textarea so coloured spans render on top */
     }
     .yaml-textarea {
@@ -377,7 +377,7 @@
       background: transparent;
       border: none;
       outline: none;
-      color: var(--text); /* visible text; highlight overlay sits on top via z-index */
+      color: transparent; /* hidden — highlight div renders the visible text */
       caret-color: var(--text);
       resize: none;
       white-space: pre;
