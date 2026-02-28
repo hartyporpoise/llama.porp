@@ -256,6 +256,37 @@
     .badge-inbound   { background: var(--blue-dim);   color: var(--blue);   }
     .badge-mtls      { background: var(--green-dim);  color: var(--green);  }
     .badge-mtls .badge-dot { background: var(--green); }
+    .badge-warn      { background: var(--yellow-dim); color: var(--yellow); cursor: default; }
+    .badge-warn .badge-dot { background: var(--yellow); }
+
+    /* ── Custom tooltip ────────────────────────────────────── */
+    [data-tooltip] { position: relative; }
+    [data-tooltip]::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: calc(100% + 7px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface3);
+      color: var(--text);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 0.72rem;
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: 0;
+      line-height: 1.45;
+      white-space: pre-line;
+      width: max-content;
+      max-width: 220px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      z-index: 100;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+    }
+    [data-tooltip]:hover::after { opacity: 1; }
 
     /* ── Buttons ─────────────────────────────────────── */
     button {
@@ -2260,9 +2291,12 @@ function renderOverviewPeers(peers) {
   if (!connected.length) { body.innerHTML = ''; empty.style.display = ''; return; }
   empty.style.display = 'none';
   body.innerHTML = connected.map(function(p) {
-    var wsConn = p.channel === 'connected';
+    var wsConn   = p.channel === 'connected';
+    var encrypted = (p.url || '').startsWith('https://');
     var chanBadge = wsConn
-      ? '<span class="badge badge-mtls"><span class="badge-dot"></span>live</span>'
+      ? (encrypted
+          ? '<span class="badge badge-mtls" data-tooltip="Traffic encrypted via TLS (wss://).\nPeer identity verified by CA fingerprint."><span class="badge-dot"></span>live</span>'
+          : '<span class="badge badge-warn" data-tooltip="Channel is unencrypted (ws://).\nSet selfUrl to https:// to enable\nTLS-encrypted wss:// connections."><span class="badge-dot"></span>live</span>')
       : '<span class="badge badge-failed">offline</span>';
     return '<tr>'
       + '<td><strong>' + _esc(p.name) + '</strong></td>'
@@ -2293,11 +2327,14 @@ function renderAllPeers(peers) {
       : '<span class="badge badge-failed">failed</span>')
       : '<span class="badge badge-ready"><span class="badge-dot"></span>peered</span>';
 
-    var wsConn = p.channel === 'connected';
+    var wsConn    = p.channel === 'connected';
+    var encrypted = (p.url || '').startsWith('https://');
     var channelCell = isPend
       ? '<span class="badge badge-pending">—</span>'
       : (wsConn
-          ? '<span class="badge badge-mtls"><span class="badge-dot"></span>live</span>'
+          ? (encrypted
+              ? '<span class="badge badge-mtls" data-tooltip="Traffic encrypted via TLS (wss://).\nPeer identity verified by CA fingerprint."><span class="badge-dot"></span>live</span>'
+              : '<span class="badge badge-warn" data-tooltip="Channel is unencrypted (ws://).\nSet selfUrl to https:// to enable\nTLS-encrypted wss:// connections."><span class="badge-dot"></span>live</span>')
           : '<span class="badge badge-failed">offline</span>');
 
     var actionBtn = '';

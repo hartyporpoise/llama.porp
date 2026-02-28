@@ -117,11 +117,6 @@ app.register_blueprint(workloads_bp.bp)
 app.register_blueprint(tunnels_bp.bp)
 app.register_blueprint(settings_bp.bp)
 
-# WebSocket channel endpoint — flask-sock binds the route directly on the app
-from porpulsion.routes.ws import sock as _ws_sock
-_ws_sock.init_app(app)
-
-
 @app.route("/")
 @app.route("/ui")
 @app.route("/ui/")
@@ -210,5 +205,11 @@ if __name__ == "__main__":
 
     threading.Thread(target=_reconstruct_remote_apps, daemon=True).start()
     threading.Thread(target=_reconnect_persisted_peers, daemon=True).start()
+
+    # Peer-facing server (port 8001): /peer and /ws only.
+    # This is the port exposed via the Ingress. The dashboard (port 8000)
+    # stays internal and is only reachable via port-forward or from inside the cluster.
+    from porpulsion.peer_server import start as _start_peer_server
+    threading.Thread(target=_start_peer_server, daemon=True, name="peer-server").start()
 
     app.run(host="0.0.0.0", port=8000, threaded=True)

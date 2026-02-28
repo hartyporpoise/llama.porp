@@ -65,12 +65,12 @@ deploy: ## Full deploy: start clusters, build image, helm install both agents
 		KUBECONFIG=/tmp/kubeconfig-a.yaml helm upgrade --install porpulsion /charts/porpulsion \
 			--create-namespace --namespace porpulsion \
 			--set agent.agentName=cluster-a \
-			--set agent.selfUrl=http://$$IP_A:30080 \
+			--set agent.selfUrl=http://$$IP_A:30081 \
 			--set agent.image=porpulsion-agent:local \
 			--set agent.pullPolicy=Never \
 			--set service.type=NodePort \
 			--set service.uiNodePort=30080 \
-			--set service.agentNodePort=30443 \
+			--set service.peerNodePort=30081 \
 			--wait --timeout 90s \
 	"
 
@@ -86,12 +86,12 @@ deploy: ## Full deploy: start clusters, build image, helm install both agents
 		KUBECONFIG=/tmp/kubeconfig-b.yaml helm upgrade --install porpulsion /charts/porpulsion \
 			--create-namespace --namespace porpulsion \
 			--set agent.agentName=cluster-b \
-			--set agent.selfUrl=http://$$IP_B:30080 \
+			--set agent.selfUrl=http://$$IP_B:30081 \
 			--set agent.image=porpulsion-agent:local \
 			--set agent.pullPolicy=Never \
 			--set service.type=NodePort \
 			--set service.uiNodePort=30080 \
-			--set service.agentNodePort=30443 \
+			--set service.peerNodePort=30081 \
 			--wait --timeout 90s \
 	"
 
@@ -100,8 +100,10 @@ deploy: ## Full deploy: start clusters, build image, helm install both agents
 	@echo "  porpulsion is running!"
 	@echo "============================================"
 	@echo ""
-	@echo "  cluster-a UI:    http://localhost:8001"
-	@echo "  cluster-b UI:    http://localhost:8002"
+	@echo "  cluster-a UI:         http://localhost:8001"
+	@echo "  cluster-b UI:         http://localhost:8002"
+	@echo "  cluster-a peer port:  http://localhost:8003  (/peer + /ws)"
+	@echo "  cluster-b peer port:  http://localhost:8004  (/peer + /ws)"
 	@echo ""
 	@echo "  kubectl:"
 	@echo "    docker exec $(CLUSTER_A) kubectl get pods -n porpulsion"
@@ -128,12 +130,12 @@ redeploy: ## Rebuild agent image + helm upgrade (clusters must already be runnin
 		KUBECONFIG=/tmp/kubeconfig-a.yaml helm upgrade --install porpulsion /charts/porpulsion \
 			--create-namespace --namespace porpulsion \
 			--set agent.agentName=cluster-a \
-			--set agent.selfUrl=http://$$IP_A:30080 \
+			--set agent.selfUrl=http://$$IP_A:30081 \
 			--set agent.image=porpulsion-agent:local \
 			--set agent.pullPolicy=Never \
 			--set service.type=NodePort \
 			--set service.uiNodePort=30080 \
-			--set service.agentNodePort=30443 \
+			--set service.peerNodePort=30081 \
 			--wait --timeout 90s \
 	"
 	@echo ""
@@ -148,18 +150,18 @@ redeploy: ## Rebuild agent image + helm upgrade (clusters must already be runnin
 		KUBECONFIG=/tmp/kubeconfig-b.yaml helm upgrade --install porpulsion /charts/porpulsion \
 			--create-namespace --namespace porpulsion \
 			--set agent.agentName=cluster-b \
-			--set agent.selfUrl=http://$$IP_B:30080 \
+			--set agent.selfUrl=http://$$IP_B:30081 \
 			--set agent.image=porpulsion-agent:local \
 			--set agent.pullPolicy=Never \
 			--set service.type=NodePort \
 			--set service.uiNodePort=30080 \
-			--set service.agentNodePort=30443 \
+			--set service.peerNodePort=30081 \
 			--wait --timeout 90s \
 	"
 	@echo ""
 	@echo "  Done. Agents redeployed."
-	@echo "  cluster-a UI: http://localhost:8001"
-	@echo "  cluster-b UI: http://localhost:8002"
+	@echo "  cluster-a UI: http://localhost:8001  (peer: http://localhost:8003)"
+	@echo "  cluster-b UI: http://localhost:8002  (peer: http://localhost:8004)"
 	@echo ""
 
 teardown: ## Destroy clusters and volumes

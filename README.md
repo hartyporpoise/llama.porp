@@ -83,16 +83,26 @@ helm upgrade --install porpulsion oci://ghcr.io/hartyporpoise/porpulsion \
   --set agent.selfUrl=https://porpulsion.example.com
 ```
 
-The service defaults to `ClusterIP`. Expose it with your own Ingress or LoadBalancer. A single port (8000) handles everything: the dashboard, the peering API, and the persistent WebSocket channel.
+The agent runs two servers on separate ports:
+
+| Port | Purpose | Exposure |
+|------|---------|----------|
+| **8000** | Dashboard UI + local management API | Internal only — never expose via Ingress |
+| **8001** | Peer handshake (`/peer`) + WebSocket channel (`/ws`) | Expose via Ingress |
 
 ```sh
-# Quick access without an Ingress
-kubectl port-forward svc/porpulsion 8000:8000 -n porpulsion   # dashboard + WS + peering
+# Access the dashboard locally
+kubectl port-forward svc/porpulsion 8000:8000 -n porpulsion
 ```
 
 ### nginx Ingress example
 
-Porpulsion works with a standard nginx Ingress — no `configuration-snippet` or client-cert forwarding required. The only special requirement is an elevated proxy read timeout so nginx doesn't kill the long-lived WebSocket channel during idle periods (the default 60s will cause disconnects).
+Only port 8001 (the peer-facing server) is exposed. The dashboard stays internal.
+
+Two annotations are required:
+
+- **`websocket-services`** — tells the ingress controller to proxy the WebSocket upgrade correctly (sets `proxy_http_version 1.1` and the `Upgrade`/`Connection` headers)
+- **`proxy-read-timeout` / `proxy-send-timeout`** — must be longer than the agent's ping interval (20s); the default 60s will cause the persistent channel to drop during quiet periods
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -101,8 +111,9 @@ metadata:
   name: porpulsion
   namespace: porpulsion
   annotations:
-    # Keep the persistent WebSocket channel alive — must be longer than the
-    # agent's ping interval (20s). Set generously to survive quiet periods.
+    # Required: allows the WS upgrade to pass through nginx correctly.
+    nginx.ingress.kubernetes.io/websocket-services: "porpulsion"
+    # Keep the persistent WebSocket channel alive during quiet periods.
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
 spec:
@@ -115,14 +126,23 @@ spec:
     - host: porpulsion.example.com
       http:
         paths:
-          - path: /
+          - path: /peer
             pathType: Prefix
             backend:
               service:
                 name: porpulsion
                 port:
-                  number: 8000
+                  number: 8001
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: porpulsion
+                port:
+                  number: 8001
 ```
+
+> **Encryption**: set `agent.selfUrl` to `https://porpulsion.example.com` and all peer WebSocket channels will use `wss://` (TLS via nginx). If `selfUrl` is `http://` the channel falls back to unencrypted `ws://` — the dashboard shows a yellow **live** badge as a warning.
 
 Set `agent.selfUrl` to `https://porpulsion.example.com` in your Helm values.
 
@@ -136,8 +156,10 @@ Set `agent.selfUrl` to `https://porpulsion.example.com` in your Helm values.
 | `agent.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `namespace` | `porpulsion` | Namespace for the agent and all RemoteApp workloads |
 | `service.type` | `ClusterIP` | Service type — use `NodePort` for local dev |
-| `service.port` | `8000` | Dashboard + WebSocket + peering port |
-| `service.uiNodePort` | `""` | NodePort (only when `type=NodePort`) |
+| `service.port` | `8000` | Dashboard UI and local management API (internal only) |
+| `service.uiNodePort` | `""` | NodePort for dashboard (only when `type=NodePort`) |
+| `service.peerPort` | `8001` | Peer handshake + WebSocket channel (expose via Ingress) |
+| `service.peerNodePort` | `""` | NodePort for peer server (only when `type=NodePort`) |
 
 ---
 

@@ -29,21 +29,31 @@ agent:
   selfUrl: ""
 
 # ── Service ────────────────────────────────────────────────────────────────────
-# A single Service exposes the HTTP dashboard, peering API, and WebSocket channel
-# all on one port (8000). Defaults to ClusterIP; put an Ingress or LoadBalancer
-# on top in production. For local development, set type=NodePort.
+# The Service exposes two ports:
+#   8000 (ui)      — dashboard and local management API. Internal only; never
+#                    exposed via an Ingress. Access via kubectl port-forward.
+#   8001 (peer-ws) — peer handshake (/peer) and WebSocket channel (/ws). This
+#                    is the only port your Ingress should forward to.
 #
-#   kubectl port-forward svc/porpulsion 8000:8000   # dashboard + WS + peering
+#   kubectl port-forward svc/porpulsion 8000:8000   # dashboard (local access)
+#   kubectl port-forward svc/porpulsion 8001:8001   # peer channel (testing)
 
 service:
   # -- Service type. ClusterIP for production; NodePort for local dev.
   type: ClusterIP
 
-  # -- Port the HTTP dashboard and WebSocket peer channel listen on.
+  # -- Port for the dashboard UI and local management API (internal only).
   port: 8000
 
-  # -- NodePort for the dashboard + WebSocket. Only used when type=NodePort.
+  # -- NodePort for the dashboard UI. Only used when type=NodePort.
   uiNodePort: ""
+
+  # -- Port for the peer-facing server: /peer (handshake) and /ws (WebSocket).
+  #    Expose this port via your Ingress.
+  peerPort: 8001
+
+  # -- NodePort for the peer-facing server. Only used when type=NodePort.
+  peerNodePort: ""
 
 # ── Agent runtime settings ──────────────────────────────────────────────────────
 # These settings are configured at runtime via the dashboard UI or the /settings

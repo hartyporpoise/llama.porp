@@ -24,8 +24,10 @@ spec:
           image: {{ .Values.agent.image }}
           imagePullPolicy: {{ .Values.agent.pullPolicy }}
           ports:
-            - name: ui-ws
+            - name: ui
               containerPort: {{ .Values.service.port }}
+            - name: peer-ws
+              containerPort: {{ .Values.service.peerPort }}
           env:
             - name: AGENT_NAME
               value: {{ .Values.agent.agentName | quote }}

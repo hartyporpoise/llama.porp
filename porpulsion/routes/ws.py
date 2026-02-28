@@ -17,8 +17,7 @@ from porpulsion.tls import cert_fingerprint
 
 log = logging.getLogger("porpulsion.routes.ws")
 
-bp   = Blueprint("ws", __name__)
-sock = Sock()   # bound to the Flask app in agent.py
+bp = Blueprint("ws", __name__)
 
 
 def _identify_peer_by_ca(ca_pem: str) -> str | None:
@@ -46,7 +45,6 @@ def _identify_peer_by_ca(ca_pem: str) -> str | None:
     return None
 
 
-@sock.route("/ws")
 def peer_ws(ws):
     """
     Incoming WebSocket connection from a peer.
