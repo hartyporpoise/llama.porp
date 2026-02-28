@@ -141,8 +141,10 @@ def accept_inbound(req_id):
 
     _urllib3.disable_warnings(_urllib3.exceptions.InsecureRequestWarning)
     session = _req.Session()
-    session.cert = None
-    session.verify = False
+    # Send our client cert so the confirmation reaches the initiator's mTLS
+    # listener whether they are directly exposed or behind a TLS terminator.
+    session.cert = (state.AGENT_CERT_PATH, state.AGENT_KEY_PATH)
+    session.verify = False  # no CA pinned yet at this stage — bootstrap trust
 
     try:
         resp = session.post(

@@ -44,6 +44,13 @@ else:
     except Exception:
         _detected_ip = "127.0.0.1"
     state.SELF_URL = f"https://{_detected_ip}:8443"
+    log.warning(
+        "SELF_URL not set — auto-detected as %s. "
+        "This is a pod-internal IP and will cause peering confirmation to fail "
+        "when connecting across clusters. Set agent.selfUrl in your Helm values "
+        "to the externally reachable URL for this agent (e.g. https://agent.example.com:8443).",
+        state.SELF_URL
+    )
 
 # Extract IP SAN from SELF_URL for leaf cert
 _ip_match = re.search(r'https?://([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)', state.SELF_URL)

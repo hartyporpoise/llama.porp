@@ -106,6 +106,10 @@ metadata:
   namespace: porpulsion
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # Pass the X-Invite-Token header through to the pod — nginx strips
+    # unknown headers by default and the peering handshake depends on it.
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_pass_header X-Invite-Token;
 spec:
   ingressClassName: nginx
   rules:
@@ -113,8 +117,9 @@ spec:
       http:
         paths:
           # mTLS agent — peer-to-peer traffic only, routed to port 8443.
-          # nginx.ingress.kubernetes.io/ssl-passthrough is NOT needed here
-          # because porpulsion handles mTLS itself; nginx proxies plain TCP.
+          # Note: nginx terminates TLS here so this is not end-to-end mTLS.
+          # For true mTLS, expose port 8443 via a LoadBalancer service and
+          # point agent.selfUrl directly at it instead.
           - path: /agent(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
@@ -132,7 +137,7 @@ spec:
                   number: 8000
 ```
 
-> **Note:** Set `agent.selfUrl` to `https://porpulsion.example.com:443` (or whichever port your Ingress terminates on) so peer agents know the correct address to reach `/agent/*`.
+> **Note:** Set `agent.selfUrl` to `https://porpulsion.example.com` (the ingress hostname) so peer agents know where to reach `/agent/*`. For true end-to-end mTLS, use a `LoadBalancer` service on port 8443 instead and set `selfUrl` to point at that.
 
 ### Helm values
 

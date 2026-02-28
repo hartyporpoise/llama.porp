@@ -2330,12 +2330,14 @@ async function cancelConnecting(url) {
 }
 
 async function retryConnecting(url) {
-  var token = await showPrompt('Retry connection', 'Enter the invite token for:\n' + url, 'Invite token…');
+  var token = await showPrompt('Retry connection (1/2)', 'Enter the invite token for:\n' + url, 'Invite token…');
   if (!token || !token.trim()) return;
+  var fp = await showPrompt('Retry connection (2/2)', 'Enter the CA fingerprint for:\n' + url, 'CA fingerprint (SHA-256)…');
+  if (!fp || !fp.trim()) return;
   var r = await fetch('/peers/retry', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({url: url, invite_token: token.trim()}),
+    body: JSON.stringify({url: url, invite_token: token.trim(), ca_fingerprint: fp.trim()}),
   });
   var d = await r.json();
   if (r.ok) toast('Retrying…', 'ok');
