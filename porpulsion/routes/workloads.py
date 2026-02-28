@@ -196,7 +196,7 @@ def create_remoteapp():
     try:
         session = _peer_session(peer)
         resp = session.post(
-            f"{peer.url}/remoteapp/receive",
+            f"{peer.url}/agent/remoteapp/receive",
             json={"id": ra.id, "name": ra.name, "spec": ra.spec.to_dict(),
                   "source_peer": state.AGENT_NAME},
             timeout=5,
@@ -305,7 +305,7 @@ def reject_remoteapp(app_id):
         try:
             session = _peer_session(source)
             session.post(
-                f"{source.url}/remoteapp/{app_id}/status",
+                f"{source.url}/agent/remoteapp/{app_id}/status",
                 json={"status": "Rejected",
                       "updated_at": datetime.now(timezone.utc).isoformat()},
                 timeout=5,
@@ -347,7 +347,7 @@ def delete_remoteapp(app_id):
         if peer:
             try:
                 session = _peer_session(peer)
-                session.delete(f"{peer.url}/remoteapp/{app_id}/remote", timeout=5)
+                session.delete(f"{peer.url}/agent/remoteapp/{app_id}/remote", timeout=5)
             except Exception as e:
                 log.warning("Failed to notify peer of deletion: %s", e)
         state.local_apps[app_id].status = "Deleted"
@@ -365,7 +365,7 @@ def delete_remoteapp(app_id):
             try:
                 session = _peer_session(source)
                 session.post(
-                    f"{source.url}/remoteapp/{app_id}/status",
+                    f"{source.url}/agent/remoteapp/{app_id}/status",
                     json={"status": "Deleted",
                           "updated_at": datetime.now(timezone.utc).isoformat()},
                     timeout=5,
@@ -412,7 +412,7 @@ def scale_remoteapp(app_id):
         try:
             session = _peer_session(peer)
             resp = session.post(
-                f"{peer.url}/remoteapp/{app_id}/scale/remote",
+                f"{peer.url}/agent/remoteapp/{app_id}/scale/remote",
                 json={"replicas": replicas},
                 timeout=5,
             )
@@ -465,7 +465,7 @@ def remoteapp_detail(app_id):
             return jsonify({"error": "peer not connected", "app": ra.to_dict()}), 200
         try:
             session = _peer_session(peer)
-            resp = session.get(f"{peer.url}/remoteapp/{app_id}/detail/remote", timeout=5)
+            resp = session.get(f"{peer.url}/agent/remoteapp/{app_id}/detail/remote", timeout=5)
             detail = resp.json() if resp.ok else {}
         except Exception as e:
             detail = {"error": str(e)}
@@ -506,7 +506,7 @@ def update_remoteapp_spec(app_id):
     try:
         session = _peer_session(peer)
         resp = session.put(
-            f"{peer.url}/remoteapp/{app_id}/spec/remote",
+            f"{peer.url}/agent/remoteapp/{app_id}/spec/remote",
             json={"spec": new_spec, "name": ra.name, "source_peer": state.AGENT_NAME},
             timeout=5,
         )

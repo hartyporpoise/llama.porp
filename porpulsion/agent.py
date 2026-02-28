@@ -110,6 +110,14 @@ app.register_blueprint(workloads_bp.bp)
 app.register_blueprint(tunnels_bp.bp)
 app.register_blueprint(settings_bp.bp)
 
+# Re-register peer-facing blueprints under /agent so the mTLS port (8443)
+# has a dedicated path that nginx can route separately from the plain HTTP
+# dashboard (8000). Peer agents call https://<self_url>/agent/... over mTLS;
+# the plain HTTP port serves the dashboard at its normal paths.
+app.register_blueprint(peers_bp.bp,     url_prefix="/agent", name="peers_agent")
+app.register_blueprint(workloads_bp.bp, url_prefix="/agent", name="workloads_agent")
+app.register_blueprint(tunnels_bp.bp,   url_prefix="/agent", name="tunnels_agent")
+
 
 @app.route("/")
 @app.route("/ui")

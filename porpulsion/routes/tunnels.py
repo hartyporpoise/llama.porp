@@ -48,7 +48,7 @@ def proxy_remoteapp(app_id, port, subpath):
         return jsonify({"error": "peer not connected"}), 503
 
     session = _peer_session(peer)
-    remote_url = f"{peer.url}/remoteapp/{app_id}/proxy-remote/{port}"
+    remote_url = f"{peer.url}/agent/remoteapp/{app_id}/proxy-remote/{port}"
     if subpath:
         remote_url += f"/{subpath}"
     qs = request.query_string.decode()

@@ -46,7 +46,7 @@ def _report_status(remote_app, callback_url, status, peer=None, retries=3):
         try:
             session = _peer_session(peer)
             resp = session.post(
-                f"{callback_url}/remoteapp/{remote_app.id}/status",
+                f"{callback_url}/agent/remoteapp/{remote_app.id}/status",
                 json=payload,
                 timeout=5,
             )

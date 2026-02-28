@@ -146,7 +146,7 @@ def accept_inbound(req_id):
 
     try:
         resp = session.post(
-            f"{peer_url}/peer",
+            f"{peer_url}/agent/peer",
             json={"name": state.AGENT_NAME, "url": state.SELF_URL,
                   "ca": state.AGENT_CA_PEM.decode()},
             timeout=5,
@@ -192,7 +192,7 @@ def remove_peer(peer_name):
         session.verify = False
         _urllib3.disable_warnings(_urllib3.exceptions.InsecureRequestWarning)
         session.post(
-            f"{peer.url}/peer/disconnect",
+            f"{peer.url}/agent/peer/disconnect",
             json={"name": state.AGENT_NAME},
             timeout=3,
         )
