@@ -98,6 +98,10 @@ kubectl port-forward svc/porpulsion 8443:8443 -n porpulsion   # mTLS agent
 
 ### nginx Ingress example
 
+Porpulsion works with a standard nginx Ingress on a single hostname. nginx terminates TLS,
+requests the peer's client certificate, and forwards it to the pod as a header. The agent
+verifies the certificate in software against its known peer CAs.
+
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -106,20 +110,26 @@ metadata:
   namespace: porpulsion
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /$2
-    # Pass the X-Invite-Token header through to the pod — nginx strips
-    # unknown headers by default and the peering handshake depends on it.
     nginx.ingress.kubernetes.io/configuration-snippet: |
-      proxy_pass_header X-Invite-Token;
+      # Request a client cert from connecting peers but don't require one —
+      # unauthenticated browser traffic (dashboard) must still get through.
+      # The agent verifies the cert in software against its peer CA list.
+      ssl_verify_client optional_no_ca;
+
+      # Forward the client cert to the pod as a URL-encoded PEM header.
+      proxy_set_header X-SSL-Client-Cert $ssl_client_escaped_cert;
 spec:
   ingressClassName: nginx
+  tls:
+    - hosts:
+        - porpulsion.example.com
+      secretName: porpulsion-tls   # your TLS cert (e.g. cert-manager / Let's Encrypt)
   rules:
     - host: porpulsion.example.com
       http:
         paths:
-          # mTLS agent — peer-to-peer traffic only, routed to port 8443.
-          # Note: nginx terminates TLS here so this is not end-to-end mTLS.
-          # For true mTLS, expose port 8443 via a LoadBalancer service and
-          # point agent.selfUrl directly at it instead.
+          # Peer-to-peer agent traffic — routes to the mTLS listener on port 8443.
+          # nginx terminates TLS and forwards the client cert via header.
           - path: /agent(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
@@ -127,7 +137,7 @@ spec:
                 name: porpulsion
                 port:
                   number: 8443
-          # Dashboard — plain HTTP, serves the UI and API.
+          # Dashboard — plain HTTP, serves the UI and management API.
           - path: /()(.*)
             pathType: ImplementationSpecific
             backend:
@@ -137,7 +147,15 @@ spec:
                   number: 8000
 ```
 
-> **Note:** Set `agent.selfUrl` to `https://porpulsion.example.com` (the ingress hostname) so peer agents know where to reach `/agent/*`. For true end-to-end mTLS, use a `LoadBalancer` service on port 8443 instead and set `selfUrl` to point at that.
+Set `agent.selfUrl` to `https://porpulsion.example.com` in your Helm values so peer agents
+know where to reach the `/agent/*` endpoints.
+
+> **Security note:** With `ssl_verify_client optional_no_ca`, nginx forwards whatever cert
+> the client presents without verifying the chain. The porpulsion agent performs the trust
+> check in software using the CA certs exchanged during peering. This is safe as long as
+> port 8443 is only reachable via nginx (not directly exposed). For fully hardware-enforced
+> mTLS, expose port 8443 via a TCP `LoadBalancer` service and point `agent.selfUrl`
+> directly at it instead.
 
 ### Helm values
 
