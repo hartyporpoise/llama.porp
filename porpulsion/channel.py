@@ -443,5 +443,8 @@ def _register_handlers(ch: "PeerChannel"):
     ch.register("remoteapp/scale",       handle_remoteapp_scale)
     ch.register("remoteapp/detail",      handle_remoteapp_detail)
     ch.register("remoteapp/spec-update", handle_remoteapp_spec_update)
-    ch.register("proxy/request",         handle_proxy_request)
+    # Wrap proxy handler so it can enforce the per-peer tunnel allowlist.
+    def _proxy_handler(payload, _peer=ch.peer_name):
+        return handle_proxy_request(payload, peer_name=_peer)
+    ch.register("proxy/request", _proxy_handler)
     ch.register("peer/disconnect",       handle_peer_disconnect)

@@ -138,7 +138,7 @@ def handle_remoteapp_spec_update(payload: dict) -> dict:
 
 # ── Proxy tunnel ──────────────────────────────────────────────
 
-def handle_proxy_request(payload: dict) -> dict:
+def handle_proxy_request(payload: dict, peer_name: str = "") -> dict:
     """
     Proxy an HTTP request to a local pod and return the response.
     Body is base64-encoded in the payload.
@@ -155,6 +155,17 @@ def handle_proxy_request(payload: dict) -> dict:
 
     if not state.settings.allow_inbound_tunnels:
         raise RuntimeError("inbound tunnels are disabled on this agent")
+
+    # Enforce per-peer tunnel allowlist. Empty string = deny all.
+    allowed_raw = (state.settings.allowed_tunnel_peers or "").strip()
+    if allowed_raw:
+        allowed_tokens = {t.strip() for t in allowed_raw.split(",") if t.strip()}
+        # Tokens are either "peer" (allow all apps from that peer) or "peer/app_id"
+        if peer_name not in allowed_tokens and f"{peer_name}/{app_id}" not in allowed_tokens:
+            raise RuntimeError(f"tunnel from peer '{peer_name}' is not permitted")
+    else:
+        raise RuntimeError(f"tunnel from peer '{peer_name}' is not permitted (no peers allowed)")
+
     if app_id not in state.remote_apps:
         raise RuntimeError("app not found")
 
