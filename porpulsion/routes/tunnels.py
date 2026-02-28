@@ -4,7 +4,7 @@ import requests as _req
 from flask import Blueprint, request, jsonify, Response
 
 from porpulsion import state, tls
-from porpulsion.peering import verify_peer
+from porpulsion.peering import verify_peer, identify_peer
 
 log = logging.getLogger("porpulsion.routes.tunnels")
 
@@ -86,6 +86,33 @@ def proxy_remoteapp_remote(app_id, port, subpath):
     """Peer-facing: resolve pod and proxy the request to it."""
     if not verify_peer(request, state.peers):
         return jsonify({"error": "unauthorized"}), 403
+
+    if not state.settings.allow_inbound_tunnels:
+        return jsonify({"error": "inbound tunnels are disabled on this agent"}), 403
+
+    # Empty allowlist = deny all; non-empty = check peer (or peer/appid) entries
+    raw_tokens = [p.strip() for p in state.settings.allowed_tunnel_peers.split(",") if p.strip()]
+    peer_name = identify_peer(request, state.peers)
+    if not raw_tokens:
+        return jsonify({"error": "no tunnel peers are permitted on this agent"}), 403
+
+    # Partition tokens into bare peer names vs per-app entries for this peer
+    peer_all = set()    # bare "peername" tokens — all apps allowed for this peer
+    peer_apps = set()   # "peername/appid" tokens — specific apps allowed for this peer
+    for token in raw_tokens:
+        parts = token.split("/", 1)
+        if len(parts) == 1:
+            peer_all.add(parts[0])
+        else:
+            if parts[0] == peer_name:
+                peer_apps.add(parts[1])
+
+    if peer_name not in peer_all and not peer_apps:
+        return jsonify({"error": f"peer '{peer_name}' is not on the tunnel allowlist"}), 403
+
+    # If peer has per-app restrictions, check the requested app_id
+    if peer_name not in peer_all and app_id not in peer_apps:
+        return jsonify({"error": f"app '{app_id}' is not permitted for peer '{peer_name}'"}), 403
 
     if app_id not in state.remote_apps:
         return jsonify({"error": "app not found"}), 404

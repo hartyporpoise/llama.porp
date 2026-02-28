@@ -21,6 +21,7 @@ pending_peers:  dict[str, dict]          = {}   # url  -> {name, url, since, att
 pending_inbound: dict[str, dict]         = {}   # id   -> {name, url, ca_pem, since}
 local_apps:     dict[str, RemoteApp]     = {}   # apps we submitted, tracked locally
 remote_apps:    dict[str, RemoteApp]     = {}   # apps received from peers, executing here
+pending_approval: dict[str, dict]        = {}   # id -> {id, name, spec, source_peer, callback_url, since}
 tunnel_requests: dict[str, TunnelRequest] = {}  # pending/approved/rejected tunnel requests
 settings: AgentSettings = AgentSettings()
 invite_token: str = ""

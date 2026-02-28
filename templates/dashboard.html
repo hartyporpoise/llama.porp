@@ -441,13 +441,13 @@
 
     /* ── Deploy form ─────────────────────────────────── */
     .deploy-form-layout {
-      display: grid;
-      grid-template-columns: 220px 1fr auto;
-      gap: 1.25rem;
-      align-items: start;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
     }
     .deploy-form-action {
-      padding-top: 1.55rem; /* align button with inputs */
+      display: flex;
+      justify-content: flex-end;
     }
 
     /* ── Segmented control ───────────────────────────── */
@@ -565,8 +565,70 @@
     .mt1 { margin-top: 0.5rem; }
     .mt2 { margin-top: 1rem; }
 
-    /* ── Quota grid ──────────────────────────────────── */
+    /* ── Settings page ───────────────────────────────── */
     .quota-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .settings-section { margin-bottom: 0; }
+    .settings-divider { border: none; border-top: 1px solid var(--border); margin: 0.85rem 0; }
+    .policy-input-row { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.75rem; }
+    .policy-input-row:last-child { margin-bottom: 0; }
+    .policy-input-row .form-label { margin-bottom: 0; }
+    .policy-hint { font-size: 0.7rem; color: var(--muted2); margin-top: 0.2rem; }
+    .section-disabled { opacity: 0.38; pointer-events: none; }
+
+    /* ── Tunnel peer checklist ───────────────────────── */
+    .tunnel-peer-row { border-bottom: 1px solid var(--border); }
+    .tunnel-peer-row:last-child { border-bottom: none; }
+    .tunnel-peer-header {
+      display: flex; align-items: center; gap: 0.65rem;
+      padding: 0.55rem 0.9rem; cursor: pointer;
+      user-select: none;
+    }
+    .tunnel-peer-header:hover { background: var(--surface2); }
+    .tunnel-peer-name { font-size: 0.84rem; font-weight: 600; flex: 1; }
+    .tunnel-peer-toggle { font-size: 0.68rem; color: var(--muted); padding: 0 0.3rem; }
+    /* custom pill checkbox */
+    .tpc-box {
+      width: 34px; height: 18px; border-radius: 9px; flex-shrink: 0;
+      background: var(--surface3); border: 1px solid var(--border2);
+      position: relative; transition: background 0.15s, border-color 0.15s;
+      cursor: pointer;
+    }
+    .tpc-box::after {
+      content: ''; position: absolute;
+      top: 2px; left: 2px;
+      width: 12px; height: 12px; border-radius: 50%;
+      background: var(--muted2);
+      transition: transform 0.15s, background 0.15s;
+    }
+    .tpc-box.on { background: rgba(37,99,235,0.25); border-color: var(--accent); }
+    .tpc-box.on::after { background: var(--accent2); transform: translateX(16px); }
+    /* app-level pill — slightly smaller */
+    .tpa-box {
+      width: 26px; height: 14px; border-radius: 7px; flex-shrink: 0;
+      background: var(--surface3); border: 1px solid var(--border2);
+      position: relative; transition: background 0.15s, border-color 0.15s;
+      cursor: pointer;
+    }
+    .tpa-box::after {
+      content: ''; position: absolute;
+      top: 2px; left: 2px;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted2);
+      transition: transform 0.15s, background 0.15s;
+    }
+    .tpa-box.on { background: rgba(37,99,235,0.2); border-color: var(--accent); }
+    .tpa-box.on::after { background: var(--accent2); transform: translateX(12px); }
+    .tunnel-apps-list {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 0.35rem 0.9rem 0.35rem 2.8rem;
+      display: none;
+    }
+    .tunnel-apps-list.open { display: block; }
+    .tunnel-app-item {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.25rem 0; font-size: 0.78rem; color: var(--muted);
+    }
 
     /* ── Toast ───────────────────────────────────────── */
     #toast {
@@ -718,6 +780,51 @@
       color: var(--blue); margin-bottom: 0.6rem;
       display: flex; align-items: center; gap: 6px;
     }
+
+    /* Approval queue banner */
+    .approval-banner {
+      background: rgba(245,158,11,0.08);
+      border: 1px solid rgba(245,158,11,0.25);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+      display: none;
+    }
+    .approval-banner.visible { display: block; }
+    .approval-banner-title {
+      font-size: 0.78rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--yellow); margin-bottom: 0.6rem;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .approval-item {
+      display: flex; flex-direction: column;
+      border-bottom: 1px solid rgba(245,158,11,0.12);
+    }
+    .approval-item:last-child { border-bottom: none; }
+    .approval-item-header {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.6rem 0;
+    }
+    .approval-item-info { flex: 1; min-width: 0; }
+    .approval-item-name { font-weight: 600; font-size: 0.875rem; }
+    .approval-item-meta { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+    .approval-item-time { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+    .approval-item-spec {
+      display: none;
+      background: var(--bg);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      margin-bottom: 0.6rem;
+      overflow: hidden;
+    }
+    .approval-item-spec.open { display: block; }
+    .approval-spec-pre {
+      margin: 0; padding: 0.65rem 0.85rem;
+      font-family: 'SF Mono', 'Fira Mono', 'Consolas', monospace;
+      font-size: 0.78rem; line-height: 1.55;
+      color: var(--text); white-space: pre; overflow-x: auto;
+    }
     .pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--blue); animation: pulse 1.5s ease-in-out infinite; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
     .inbound-list { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -761,6 +868,7 @@
     </a>
     <a href="#" data-page="page-workloads">
       <span class="nav-icon">⬡</span> Workloads
+      <span class="nav-badge" id="nav-approval-badge" style="display:none">!</span>
     </a>
     <a href="#" data-page="page-tunnels">
       <span class="nav-icon">⇒</span> Proxy
@@ -855,7 +963,7 @@
                 <label class="form-label">App name</label>
                 <input type="text" id="app-name" placeholder="e.g. my-nginx" required>
               </div>
-              <div class="form-group" style="flex:1;">
+              <div class="form-group">
                 <label class="form-label">Spec (YAML)</label>
                 <div class="yaml-editor-wrap is-placeholder" id="deploy-editor-wrap">
                   <div class="yaml-linenos" id="deploy-editor-linenos">1</div>
@@ -959,6 +1067,15 @@
 
     <!-- ══════════════════ WORKLOADS ══════════════════ -->
     <div class="page" id="page-workloads">
+
+      <!-- Approval queue banner -->
+      <div class="approval-banner" id="approval-banner">
+        <div class="approval-banner-title">
+          <span class="pulse"></span> Workloads Awaiting Approval
+        </div>
+        <div class="approval-list" id="approval-list"></div>
+      </div>
+
       <div style="margin-bottom:1.25rem;">
         <div class="card">
           <div class="card-header">
@@ -1032,6 +1149,7 @@
     <div class="page" id="page-settings">
       <div class="grid2">
 
+        <!-- ── Connect Credentials ── -->
         <div class="card">
           <div class="card-header"><h2>Connect Credentials</h2></div>
           <div class="card-body">
@@ -1053,47 +1171,27 @@
               <button class="btn-sm" onclick="copySecret('token-fp', this)">Copy</button>
             </div>
             <div class="section-label" style="margin-top:1rem;">CA certificate (PEM)</div>
-            <textarea id="token-pem" rows="5" readonly style="font-size:0.7rem; color:var(--muted);">loading…</textarea>
-            <div class="flex-end mt1">
-              <button class="btn-sm btn-outline" onclick="copyText('token-pem', this)">Copy PEM</button>
+            <div class="secret-box" style="align-items:flex-start;">
+              <span class="secret-val masked" id="token-pem" data-value="" style="font-size:0.68rem; font-family:'SF Mono','Fira Code','Consolas',monospace; white-space:pre-wrap; word-break:break-all; flex:1; line-height:1.5;">••••••••••••••••••••••••••••••••••••••••••••••••</span>
+              <button class="eye-btn" onclick="toggleSecret('token-pem', this)" title="Show/hide"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 10s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="10" cy="10" r="2.5"/></svg></button>
+              <button class="btn-sm btn-outline" onclick="copySecret('token-pem', this)">Copy</button>
             </div>
           </div>
         </div>
 
+        <!-- ── Agent + Diagnostics ── -->
         <div class="card">
-          <div class="card-header"><h2>About this Agent</h2></div>
+          <div class="card-header"><h2>Agent</h2></div>
           <div class="card-body">
             <div class="toggle-row">
-              <div class="toggle-info"><div class="toggle-label">Agent name</div></div>
+              <div class="toggle-info"><div class="toggle-label">Name</div></div>
               <span class="mono">{{ agent_name }}</span>
             </div>
             <div class="toggle-row">
               <div class="toggle-info"><div class="toggle-label">mTLS endpoint</div></div>
               <span class="mono text-sm" id="about-url">—</span>
             </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header"><h2>Access Control</h2></div>
-          <div class="card-body">
-            <div class="toggle-row">
-              <div class="toggle-info">
-                <div class="toggle-label">Accept inbound workloads</div>
-                <div class="toggle-desc">Allow peers to deploy RemoteApps on this cluster</div>
-              </div>
-              <label class="toggle">
-                <input type="checkbox" id="setting-inbound-apps" onchange="saveSetting('allow_inbound_remoteapps', this.checked)">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-
-        <div class="card">
-          <div class="card-header"><h2>Diagnostics</h2></div>
-          <div class="card-body">
+            <hr class="settings-divider">
             <div class="section-label">Log level</div>
             <div class="seg-ctrl" id="setting-log-level">
               <button data-val="DEBUG"   onclick="setSegVal('setting-log-level',this);saveSetting('log_level','DEBUG')">Debug</button>
@@ -1104,21 +1202,118 @@
           </div>
         </div>
 
+        <!-- ── Access Control ── -->
+        <div class="card full">
+          <div class="card-header"><h2>Access Control</h2></div>
+          <div class="card-body">
+
+            <div class="section-label">Inbound workloads</div>
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <div class="toggle-label">Accept inbound workloads</div>
+                <div class="toggle-desc">Allow peers to deploy RemoteApps on this cluster</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" id="setting-inbound-apps" onchange="saveSetting('allow_inbound_remoteapps', this.checked)">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <div class="toggle-label">Require manual approval</div>
+                <div class="toggle-desc">Queue inbound apps for approval before they are executed</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" id="setting-require-approval" onchange="saveSetting('require_remoteapp_approval', this.checked)">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row" style="border-bottom:none;">
+              <div class="toggle-info">
+                <div class="toggle-label">Require resource limits</div>
+                <div class="toggle-desc">Reject apps that do not specify resources.requests</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" id="setting-require-limits" onchange="saveSetting('require_resource_limits', this.checked)">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <hr class="settings-divider">
+            <div class="section-label">Image policy</div>
+            <div class="quota-grid">
+              <div class="policy-input-row">
+                <label class="form-label">Allowed image prefixes</label>
+                <input type="text" id="policy-allowed-images" placeholder="nginx, ghcr.io/myorg/ (empty = all)">
+                <span class="policy-hint">Comma-separated. Only images matching a prefix are accepted.</span>
+              </div>
+              <div class="policy-input-row">
+                <label class="form-label">Blocked image prefixes</label>
+                <input type="text" id="policy-blocked-images" placeholder="e.g. docker.io/untrusted/">
+                <span class="policy-hint">Comma-separated. Always rejected regardless of allow list.</span>
+              </div>
+            </div>
+
+            <hr class="settings-divider">
+            <div class="section-label">Peer restrictions</div>
+            <div class="policy-input-row">
+              <label class="form-label">Allowed source peers</label>
+              <input type="text" id="policy-allowed-peers" placeholder="cluster-a, cluster-b (empty = all connected peers)">
+              <span class="policy-hint">Comma-separated peer names. Only listed peers may submit workloads.</span>
+            </div>
+
+            <hr class="settings-divider">
+            <div class="section-label">Tunnels</div>
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <div class="toggle-label">Accept inbound tunnels</div>
+                <div class="toggle-desc">Allow peers to open HTTP proxy tunnels to pods on this cluster</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" id="setting-inbound-tunnels" onchange="saveInboundTunnels(this.checked)">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div id="tunnel-allowlist-section" style="margin-top:0.75rem;">
+              <label class="form-label" style="margin-bottom:0.5rem;">Allowed tunnel peers</label>
+              <div id="tunnel-peer-checklist" style="border:1px solid var(--border2);border-radius:7px;overflow:hidden;">
+                <div class="tunnel-peer-empty" id="tunnel-peer-empty" style="padding:0.6rem 0.9rem;font-size:0.78rem;color:var(--muted);">No connected peers — connect a peer first</div>
+              </div>
+              <span class="policy-hint" style="display:block;margin-top:0.4rem;">Only enabled peers may open proxy tunnels to pods on this cluster. All disabled = deny all.</span>
+            </div>
+
+            <hr class="settings-divider" style="margin-bottom:0.85rem;">
+            <div class="flex-end">
+              <button onclick="saveAccessControl()">Save Access Control</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Resource Quotas ── -->
         <div class="card full">
           <div class="card-header"><h2>Resource Quotas</h2></div>
           <div class="card-body">
             <p class="text-sm text-muted" style="margin-bottom:1rem;">
-              Enforced on <strong style="color:var(--text);">inbound</strong> RemoteApp workloads. Set to <strong style="color:var(--text);">0</strong> for unlimited.
+              Enforced on <strong style="color:var(--text);">inbound</strong> workloads.
+              CPU/memory values are k8s quantity strings, e.g. <code>500m</code>, <code>1</code>, <code>256Mi</code>, <code>2Gi</code>. Leave blank for unlimited.
             </p>
             <div class="section-label">Per-pod limits</div>
             <div class="quota-grid" style="margin-bottom:1rem;">
               <div class="form-group">
-                <label class="form-label">Max CPU per pod (cores)</label>
-                <input type="text" inputmode="decimal" id="quota-cpu-pod" placeholder="0 = unlimited">
+                <label class="form-label">Max CPU request per pod</label>
+                <input type="text" id="quota-cpu-req-pod" placeholder="e.g. 500m, 2 — blank = unlimited">
               </div>
               <div class="form-group">
-                <label class="form-label">Max memory per pod (MiB)</label>
-                <input type="text" inputmode="numeric" id="quota-mem-pod" placeholder="0 = unlimited">
+                <label class="form-label">Max CPU limit per pod</label>
+                <input type="text" id="quota-cpu-lim-pod" placeholder="e.g. 1, 2000m — blank = unlimited">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Max memory request per pod</label>
+                <input type="text" id="quota-mem-req-pod" placeholder="e.g. 128Mi, 1Gi — blank = unlimited">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Max memory limit per pod</label>
+                <input type="text" id="quota-mem-lim-pod" placeholder="e.g. 512Mi, 2Gi — blank = unlimited">
               </div>
               <div class="form-group">
                 <label class="form-label">Max replicas per app</label>
@@ -1132,15 +1327,21 @@
                 <input type="text" inputmode="numeric" id="quota-total-deploys" placeholder="0 = unlimited">
               </div>
               <div class="form-group">
-                <label class="form-label">Max total CPU (cores)</label>
-                <input type="text" inputmode="decimal" id="quota-total-cpu" placeholder="0 = unlimited">
+                <label class="form-label">Max total pods</label>
+                <input type="text" inputmode="numeric" id="quota-total-pods" placeholder="0 = unlimited">
               </div>
               <div class="form-group">
-                <label class="form-label">Max total memory (MiB)</label>
-                <input type="text" inputmode="numeric" id="quota-total-mem" placeholder="0 = unlimited">
+                <label class="form-label">Max total CPU requests</label>
+                <input type="text" id="quota-total-cpu-req" placeholder="e.g. 8, 16000m — blank = unlimited">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Max total memory requests</label>
+                <input type="text" id="quota-total-mem-req" placeholder="e.g. 32Gi, 16384Mi — blank = unlimited">
               </div>
             </div>
-            <button onclick="saveQuotas()">Save Quotas</button>
+            <div class="flex-end">
+              <button onclick="saveQuotas()">Save Quotas</button>
+            </div>
           </div>
         </div>
 
@@ -1161,12 +1362,16 @@
               <tbody>
                 <tr><td><code>image</code></td><td>string</td><td><em>required</em></td><td>Container image reference, e.g. <code>nginx:latest</code> or <code>ghcr.io/org/app:v1.2</code></td></tr>
                 <tr><td><code>replicas</code></td><td>integer</td><td>1</td><td>Number of pod replicas. Subject to peer quota limits.</td></tr>
-                <tr><td><code>ports</code></td><td>list</td><td>[]</td><td>Ports to expose via the HTTP proxy. Each entry: <code>port</code> (required), <code>name</code> (optional label).</td></tr>
-                <tr><td><code>cpu</code></td><td>float</td><td>—</td><td>CPU request/limit in cores, e.g. <code>0.5</code>. Checked against peer quota.</td></tr>
-                <tr><td><code>memory_mb</code></td><td>integer</td><td>—</td><td>Memory request/limit in MiB, e.g. <code>256</code>. Checked against peer quota.</td></tr>
-                <tr><td><code>env</code></td><td>map</td><td>{}</td><td>Environment variables injected into the pod, e.g. <code>ENV: production</code>.</td></tr>
-                <tr><td><code>command</code></td><td>list/string</td><td>—</td><td>Override the container entrypoint.</td></tr>
-                <tr><td><code>args</code></td><td>list/string</td><td>—</td><td>Arguments passed to the entrypoint.</td></tr>
+                <tr><td><code>ports</code></td><td>list</td><td>[]</td><td>Ports to expose. Each entry: <code>port</code> (required), <code>name</code> (optional).</td></tr>
+                <tr><td><code>resources</code></td><td>object</td><td>—</td><td>Kubernetes resource requests and limits. Contains <code>requests</code> and/or <code>limits</code> maps with k8s quantity strings for <code>cpu</code> (e.g. <code>250m</code>, <code>1</code>) and <code>memory</code> (e.g. <code>128Mi</code>, <code>1Gi</code>). Checked against peer quotas.</td></tr>
+                <tr><td><code>command</code></td><td>list</td><td>—</td><td>Override the container ENTRYPOINT, e.g. <code>["/bin/sh", "-c"]</code>.</td></tr>
+                <tr><td><code>args</code></td><td>list</td><td>—</td><td>Override the container CMD / arguments.</td></tr>
+                <tr><td><code>env</code></td><td>list</td><td>—</td><td>Environment variables. Each entry: <code>name</code> + <code>value</code>, or <code>valueFrom.secretKeyRef</code> / <code>valueFrom.configMapKeyRef</code>.</td></tr>
+                <tr><td><code>imagePullPolicy</code></td><td>string</td><td>IfNotPresent</td><td><code>Always</code>, <code>IfNotPresent</code>, or <code>Never</code>. Use <code>Always</code> with mutable tags like <code>latest</code>.</td></tr>
+                <tr><td><code>imagePullSecrets</code></td><td>list</td><td>—</td><td>Names of k8s Secrets containing registry credentials, e.g. <code>[my-registry-secret]</code>.</td></tr>
+
+                <tr><td><code>readinessProbe</code></td><td>object</td><td>—</td><td>Probe to determine when traffic should be sent to the pod. Supports <code>httpGet</code> (<code>path</code>, <code>port</code>) or <code>exec</code> (<code>command</code>), plus <code>initialDelaySeconds</code>, <code>periodSeconds</code>, <code>failureThreshold</code>.</td></tr>
+                <tr><td><code>securityContext</code></td><td>object</td><td>—</td><td>Pod/container security settings: <code>runAsNonRoot</code>, <code>runAsUser</code>, <code>runAsGroup</code>, <code>fsGroup</code>, <code>readOnlyRootFilesystem</code>.</td></tr>
               </tbody>
             </table>
 
@@ -1182,24 +1387,51 @@
             <div class="docs-example-label">With resources and env vars</div>
             <div class="docs-code"><pre><span class="yk">image</span>: <span class="ys">myapp:v2.1</span>
 <span class="yk">replicas</span>: <span class="yn">2</span>
-<span class="yk">cpu</span>: <span class="yn">0.5</span>
-<span class="yk">memory_mb</span>: <span class="yn">512</span>
+<span class="yk">resources</span>:
+  <span class="yk">requests</span>:
+    <span class="yk">cpu</span>: <span class="ys">250m</span>
+    <span class="yk">memory</span>: <span class="ys">256Mi</span>
+  <span class="yk">limits</span>:
+    <span class="yk">cpu</span>: <span class="ys">500m</span>
+    <span class="yk">memory</span>: <span class="ys">512Mi</span>
 <span class="yk">ports</span>:
   <span class="yli">- </span><span class="yk">port</span>: <span class="yn">8080</span>
     <span class="yk">name</span>: <span class="ys">http</span>
   <span class="yli">- </span><span class="yk">port</span>: <span class="yn">9090</span>
     <span class="yk">name</span>: <span class="ys">metrics</span>
 <span class="yk">env</span>:
-  <span class="yk">NODE_ENV</span>: <span class="ys">production</span>
-  <span class="yk">LOG_LEVEL</span>: <span class="ys">info</span></pre></div>
+  <span class="yli">- </span><span class="yk">name</span>: <span class="ys">NODE_ENV</span>
+    <span class="yk">value</span>: <span class="ys">production</span>
+  <span class="yli">- </span><span class="yk">name</span>: <span class="ys">API_KEY</span>
+    <span class="yk">valueFrom</span>:
+      <span class="yk">secretKeyRef</span>:
+        <span class="yk">name</span>: <span class="ys">my-secret</span>
+        <span class="yk">key</span>: <span class="ys">api-key</span></pre></div>
 
             <div class="docs-example-label">Custom entrypoint</div>
             <div class="docs-code"><pre><span class="yk">image</span>: <span class="ys">python:3.11-slim</span>
-<span class="yk">command</span>: <span class="ys">python</span>
-<span class="yk">args</span>: <span class="ys">-m http.server 8000</span>
+<span class="yk">command</span>: <span class="ys">["/bin/sh", "-c"]</span>
+<span class="yk">args</span>: <span class="ys">["python -m http.server 8000"]</span>
 <span class="yk">ports</span>:
   <span class="yli">- </span><span class="yk">port</span>: <span class="yn">8000</span>
     <span class="yk">name</span>: <span class="ys">http</span></pre></div>
+
+            <div class="docs-example-label">Readiness probe + security hardening</div>
+            <div class="docs-code"><pre><span class="yk">image</span>: <span class="ys">ghcr.io/myorg/api:v3.0</span>
+<span class="yk">replicas</span>: <span class="yn">2</span>
+<span class="yk">ports</span>:
+  <span class="yli">- </span><span class="yk">port</span>: <span class="yn">8080</span>
+    <span class="yk">name</span>: <span class="ys">http</span>
+<span class="yk">imagePullSecrets</span>: <span class="ys">[ghcr-credentials]</span>
+<span class="yk">readinessProbe</span>:
+  <span class="yk">httpGet</span>:
+    <span class="yk">path</span>: <span class="ys">/healthz</span>
+    <span class="yk">port</span>: <span class="yn">8080</span>
+  <span class="yk">initialDelaySeconds</span>: <span class="yn">10</span>
+  <span class="yk">periodSeconds</span>: <span class="yn">5</span>
+<span class="yk">securityContext</span>:
+  <span class="yk">runAsNonRoot</span>: <span class="ys">true</span>
+  <span class="yk">readOnlyRootFilesystem</span>: <span class="ys">true</span></pre></div>
           </div>
         </div>
 
@@ -1260,12 +1492,14 @@
               <tbody>
                 <tr><td><code>allow_inbound_remoteapps</code></td><td>boolean</td><td>Accept RemoteApp workloads from peers.</td></tr>
                 <tr><td><code>log_level</code></td><td>string</td><td>DEBUG / INFO / WARNING / ERROR</td></tr>
-                <tr><td><code>max_cpu_per_pod</code></td><td>float</td><td>Max CPU cores per submitted app. 0 = unlimited.</td></tr>
-                <tr><td><code>max_memory_mb_per_pod</code></td><td>integer</td><td>Max memory per app in MiB. 0 = unlimited.</td></tr>
+                <tr><td><code>max_cpu_request_per_pod</code></td><td>string</td><td>Max CPU request per pod (k8s quantity, e.g. <code>500m</code>). Blank = unlimited.</td></tr>
+                <tr><td><code>max_cpu_limit_per_pod</code></td><td>string</td><td>Max CPU limit per pod. Blank = unlimited.</td></tr>
+                <tr><td><code>max_memory_request_per_pod</code></td><td>string</td><td>Max memory request per pod (e.g. <code>256Mi</code>). Blank = unlimited.</td></tr>
+                <tr><td><code>max_memory_limit_per_pod</code></td><td>string</td><td>Max memory limit per pod. Blank = unlimited.</td></tr>
                 <tr><td><code>max_replicas_per_app</code></td><td>integer</td><td>Max replicas per app. 0 = unlimited.</td></tr>
                 <tr><td><code>max_total_deployments</code></td><td>integer</td><td>Max concurrent executing apps. 0 = unlimited.</td></tr>
-                <tr><td><code>max_total_cpu</code></td><td>float</td><td>Max total CPU across all apps. 0 = unlimited.</td></tr>
-                <tr><td><code>max_total_memory_mb</code></td><td>integer</td><td>Max total memory across all apps in MiB. 0 = unlimited.</td></tr>
+                <tr><td><code>max_total_cpu_requests</code></td><td>string</td><td>Max total CPU requests across all running apps. Blank = unlimited.</td></tr>
+                <tr><td><code>max_total_memory_requests</code></td><td>string</td><td>Max total memory requests across all running apps. Blank = unlimited.</td></tr>
               </tbody>
             </table>
           </div>
@@ -1606,20 +1840,33 @@ function objToYaml(obj) {
 // ════════════════════════════════════════════════════════════
 
 var _YAML_PLACEHOLDER = [
-  '# required',
-  'image: nginx:latest',
-  '',
-  '# ports',
-  'ports:',
-  '  - port: 80',
-  '    name: http',
-  '',
-  '# scaling',
-  'replicas: 1',
-  '',
-  '# resources (optional)',
-  '# cpu: 0.5',
-  '# memory_mb: 256',
+  '# image: nginx:latest',
+  '# replicas: 1',
+  '# ports:',
+  '#   - port: 80',
+  '#     name: http',
+  '# resources:',
+  '#   requests:',
+  '#     cpu: 250m',
+  '#     memory: 64Mi',
+  '#   limits:',
+  '#     cpu: 500m',
+  '#     memory: 128Mi',
+  '# command: ["/bin/sh", "-c"]',
+  '# args: ["echo hello"]',
+  '# imagePullPolicy: IfNotPresent',
+  '# imagePullSecrets: [my-registry-secret]',
+  '# env:',
+  '#   - name: MY_VAR',
+  '#     value: hello',
+  '# readinessProbe:',
+  '#   httpGet:',
+  '#     path: /healthz',
+  '#     port: 80',
+  '#   initialDelaySeconds: 5',
+  '# securityContext:',
+  '#   runAsNonRoot: true',
+  '#   readOnlyRootFilesystem: true',
 ].join('\n');
 
 var _YAML_BLANK = 'image: nginx:latest\nreplicas: 1\nports:\n  - port: 80\n    name: http';
@@ -1693,16 +1940,6 @@ function _initYamlEditor(wrapId, taId, hlId, linenosId) {
     update();
   }
 
-  function clearPlaceholder() {
-    if (!isPlaceholder) return;
-    isPlaceholder = false;
-    ta.value = '';
-    wrap.classList.remove('is-placeholder');
-    update();
-  }
-
-  ta.addEventListener('focus', clearPlaceholder);
-
   ta.addEventListener('blur', function() {
     if (!ta.value.trim()) setPlaceholder();
   });
@@ -1730,7 +1967,7 @@ function _initYamlEditor(wrapId, taId, hlId, linenosId) {
 
   // Expose a getter for the real spec value (returns '' when placeholder)
   return {
-    getValue: function() { return isPlaceholder ? '' : ta.value; },
+    getValue: function() { return ta.value; },
     setValue: function(text) {
       isPlaceholder = false;
       ta.value = text;
@@ -1742,6 +1979,131 @@ function _initYamlEditor(wrapId, taId, hlId, linenosId) {
 }
 
 var _deployEditor;
+
+// ════════════════════════════════════════════════════════════
+//  Render: Approval queue
+// ════════════════════════════════════════════════════════════
+
+function renderApproval(list) {
+  var banner = document.getElementById('approval-banner');
+  var listEl = document.getElementById('approval-list');
+  var badge  = document.getElementById('nav-approval-badge');
+
+  if (!list.length) {
+    banner.classList.remove('visible');
+    badge.style.display = 'none';
+    listEl.innerHTML = '';
+    return;
+  }
+
+  banner.classList.add('visible');
+  badge.style.display = '';
+  badge.textContent = list.length;
+
+  // Preserve open/closed state across re-renders
+  var openIds = new Set();
+  listEl.querySelectorAll('.approval-item-spec.open').forEach(function(el) {
+    openIds.add(el.dataset.id);
+  });
+
+  listEl.innerHTML = '';
+
+  list.forEach(function(r) {
+    var id       = r.id;
+    var spec     = r.spec || {};
+    var image    = spec.image || '';
+    var replicas = spec.replicas || 1;
+    var yaml     = objToYaml(spec);
+
+    var item = document.createElement('div');
+    item.className = 'approval-item';
+
+    // ── Header row ──
+    var header = document.createElement('div');
+    header.className = 'approval-item-header';
+
+    var info = document.createElement('div');
+    info.className = 'approval-item-info';
+
+    var nameEl = document.createElement('div');
+    nameEl.className = 'approval-item-name';
+    nameEl.textContent = r.name || id;
+
+    var meta = document.createElement('div');
+    meta.className = 'approval-item-meta';
+    meta.innerHTML = 'from <strong>' + _esc(r.source_peer || '?') + '</strong>'
+      + (image ? ' &nbsp;·&nbsp; <span class="mono">' + _esc(image) + '</span>' : '')
+      + ' &nbsp;·&nbsp; ' + replicas + ' replica' + (replicas !== 1 ? 's' : '');
+
+    info.appendChild(nameEl);
+    info.appendChild(meta);
+
+    var timeEl = document.createElement('div');
+    timeEl.className = 'approval-item-time';
+    timeEl.textContent = timeAgo(r.since);
+
+    // Details toggle button
+    var detailsBtn = document.createElement('button');
+    detailsBtn.className = 'btn-sm';
+    detailsBtn.style.cssText = 'font-size:0.72rem;padding:2px 8px;';
+    detailsBtn.textContent = 'Details';
+
+    var approveBtn = document.createElement('button');
+    approveBtn.className = 'btn-sm btn-success';
+    approveBtn.textContent = 'Approve';
+    approveBtn.addEventListener('click', function() { approveApp(id, r.name || id); });
+
+    var rejectBtn = document.createElement('button');
+    rejectBtn.className = 'btn-sm btn-danger';
+    rejectBtn.textContent = 'Reject';
+    rejectBtn.addEventListener('click', function() { rejectApp(id, r.name || id); });
+
+    var btnRow = document.createElement('div');
+    btnRow.className = 'btn-row';
+    btnRow.appendChild(detailsBtn);
+    btnRow.appendChild(approveBtn);
+    btnRow.appendChild(rejectBtn);
+
+    header.appendChild(info);
+    header.appendChild(timeEl);
+    header.appendChild(btnRow);
+
+    // ── Spec pane ──
+    var specPane = document.createElement('div');
+    specPane.className = 'approval-item-spec' + (openIds.has(id) ? ' open' : '');
+    specPane.dataset.id = id;
+
+    var pre = document.createElement('pre');
+    pre.className = 'approval-spec-pre';
+    pre.textContent = yaml;
+    specPane.appendChild(pre);
+
+    detailsBtn.addEventListener('click', function() {
+      var isOpen = specPane.classList.toggle('open');
+      detailsBtn.textContent = isOpen ? 'Hide' : 'Details';
+    });
+    if (openIds.has(id)) detailsBtn.textContent = 'Hide';
+
+    item.appendChild(header);
+    item.appendChild(specPane);
+    listEl.appendChild(item);
+  });
+}
+
+async function approveApp(id, name) {
+  var r = await fetch('/remoteapp/' + id + '/approve', { method: 'POST' });
+  var d = await r.json();
+  if (r.ok) toast('Approved ' + name, 'ok');
+  else toast('Failed: ' + (d.error || r.statusText), 'error');
+  refresh();
+}
+
+async function rejectApp(id, name) {
+  var r = await fetch('/remoteapp/' + id + '/reject', { method: 'POST' });
+  if (r.ok) toast('Rejected ' + name);
+  else toast('Error rejecting ' + name, 'error');
+  refresh();
+}
 
 // ════════════════════════════════════════════════════════════
 //  Render: Inbound requests
@@ -2014,15 +2376,17 @@ function renderProxyApps(submitted) {
 
 async function refresh() {
   try {
-    var [peersR, appsR, inboundR] = await Promise.all([
+    var [peersR, appsR, inboundR, approvalR] = await Promise.all([
       fetch('/peers'),
       fetch('/remoteapps'),
       fetch('/peers/inbound'),
+      fetch('/remoteapp/pending-approval'),
     ]);
 
-    var peers   = await peersR.json();
-    var apps    = await appsR.json();
-    var inbound = await inboundR.json();
+    var peers    = await peersR.json();
+    var apps     = await appsR.json();
+    var inbound  = await inboundR.json();
+    var approval = approvalR.ok ? await approvalR.json() : [];
 
     var submitted = apps.submitted || [];
     var executing = apps.executing || [];
@@ -2049,6 +2413,8 @@ async function refresh() {
     renderOverviewPeers(peers);
     renderAllPeers(peers);
     renderInbound(inbound);
+    renderApproval(approval);
+    renderTunnelChecklist(peers, executing);
     renderRecentApps(submitted, executing);
     renderApps(submitted, 'submitted-body', 'submitted-empty', 'submitted-count', false);
     renderApps(executing, 'executing-body', 'executing-empty', 'executing-count', true);
@@ -2144,24 +2510,265 @@ async function loadSettings() {
     var r = await fetch('/settings');
     var s = await r.json();
     applySegVal('setting-log-level', s.log_level || 'INFO');
-    document.getElementById('setting-inbound-apps').checked = !!s.allow_inbound_remoteapps;
-    document.getElementById('quota-cpu-pod').value        = s.max_cpu_per_pod || 0;
-    document.getElementById('quota-mem-pod').value        = s.max_memory_mb_per_pod || 0;
-    document.getElementById('quota-replicas').value       = s.max_replicas_per_app || 0;
-    document.getElementById('quota-total-deploys').value  = s.max_total_deployments || 0;
-    document.getElementById('quota-total-cpu').value      = s.max_total_cpu || 0;
-    document.getElementById('quota-total-mem').value      = s.max_total_memory_mb || 0;
+    // Access control toggles
+    document.getElementById('setting-inbound-apps').checked    = !!s.allow_inbound_remoteapps;
+    document.getElementById('setting-require-approval').checked = !!s.require_remoteapp_approval;
+    document.getElementById('setting-require-limits').checked   = !!s.require_resource_limits;
+    document.getElementById('setting-inbound-tunnels').checked  = !!s.allow_inbound_tunnels;
+    document.getElementById('tunnel-allowlist-section').classList.toggle('section-disabled', !s.allow_inbound_tunnels);
+    // Access control text fields
+    document.getElementById('policy-allowed-images').value  = s.allowed_images  || '';
+    document.getElementById('policy-blocked-images').value  = s.blocked_images  || '';
+    document.getElementById('policy-allowed-peers').value   = s.allowed_source_peers || '';
+    // Tunnel peer checklist — stash setting; renderTunnelChecklist in refresh() applies it
+    window._loadedTunnelPeers = s.allowed_tunnel_peers || '';
+    refresh(); // re-render checklist with loaded peer allowlist
+    // Quotas
+    document.getElementById('quota-cpu-req-pod').value   = s.max_cpu_request_per_pod    || '';
+    document.getElementById('quota-cpu-lim-pod').value   = s.max_cpu_limit_per_pod      || '';
+    document.getElementById('quota-mem-req-pod').value   = s.max_memory_request_per_pod || '';
+    document.getElementById('quota-mem-lim-pod').value   = s.max_memory_limit_per_pod   || '';
+    document.getElementById('quota-replicas').value      = s.max_replicas_per_app       || 0;
+    document.getElementById('quota-total-deploys').value = s.max_total_deployments      || 0;
+    document.getElementById('quota-total-pods').value    = s.max_total_pods             || 0;
+    document.getElementById('quota-total-cpu-req').value = s.max_total_cpu_requests     || '';
+    document.getElementById('quota-total-mem-req').value = s.max_total_memory_requests  || '';
   } catch(e) {}
+}
+
+// ── Tunnel peer checklist helpers ─────────────────────────
+
+function getTunnelPeerValue() {
+  var wrap = document.getElementById('tunnel-peer-checklist');
+  var parts = [];
+  wrap.querySelectorAll('.tunnel-peer-row').forEach(function(row) {
+    var peerBox = row.querySelector('.tunnel-peer-cb');
+    if (!peerBox || !peerBox.classList.contains('on')) return;
+    var peerName = peerBox.dataset.peer;
+    var appBoxes = Array.from(row.querySelectorAll('.tunnel-app-cb'));
+    var checkedApps = appBoxes.filter(function(b) { return b.classList.contains('on'); });
+    if (!appBoxes.length || checkedApps.length === appBoxes.length) {
+      parts.push(peerName);
+    } else {
+      checkedApps.forEach(function(b) { parts.push(peerName + '/' + b.dataset.appId); });
+    }
+  });
+  return parts.join(', ');
+}
+
+// Snapshot live checked state from existing DOM rows (peer -> bool, peer/appId -> bool)
+function _tunnelChecklistSnapshot() {
+  var snap = {};
+  var wrap = document.getElementById('tunnel-peer-checklist');
+  wrap.querySelectorAll('.tunnel-peer-row').forEach(function(row) {
+    var peerBox = row.querySelector('.tunnel-peer-cb');
+    if (!peerBox) return;
+    var peerName = peerBox.dataset.peer;
+    snap[peerName] = peerBox.classList.contains('on');
+    row.querySelectorAll('.tunnel-app-cb').forEach(function(b) {
+      snap[peerName + '/' + b.dataset.appId] = b.classList.contains('on');
+    });
+    snap['__open__' + peerName] = !!row.querySelector('.tunnel-apps-list.open');
+  });
+  return snap;
+}
+
+function _makePillBox(cls, isOn, onClick) {
+  var box = document.createElement('div');
+  box.className = cls + (isOn ? ' on' : '');
+  box.addEventListener('click', function(e) {
+    e.stopPropagation();
+    onClick(box);
+  });
+  return box;
+}
+
+function renderTunnelChecklist(peers, remoteApps) {
+  var wrap  = document.getElementById('tunnel-peer-checklist');
+  var empty = document.getElementById('tunnel-peer-empty');
+
+  var connected = (peers || []).filter(function(p) {
+    return !p.status || p.status === 'connected';
+  });
+
+  if (!connected.length) {
+    if (empty) empty.style.display = '';
+    wrap.querySelectorAll('.tunnel-peer-row').forEach(function(r) { r.remove(); });
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+
+  // Snapshot live DOM state before wiping — this is what the user has set
+  var snap = _tunnelChecklistSnapshot();
+  var hasSnap = Object.keys(snap).length > 0;
+
+  // On first render (no snap), seed from saved setting
+  var seedSet = null;
+  if (!hasSnap) {
+    var saved = (window._loadedTunnelPeers || '').trim();
+    seedSet = new Set(saved.split(',').map(function(s) { return s.trim(); }).filter(Boolean));
+  }
+
+  // Build peer->apps map
+  var peerApps = {};
+  connected.forEach(function(p) { peerApps[p.name] = []; });
+  (remoteApps || []).forEach(function(a) {
+    if (a.source_peer && peerApps[a.source_peer]) peerApps[a.source_peer].push(a);
+  });
+
+  wrap.querySelectorAll('.tunnel-peer-row').forEach(function(r) { r.remove(); });
+
+  connected.forEach(function(p) {
+    var peerName = p.name;
+    var apps     = peerApps[peerName] || [];
+
+    // Determine on/off — prefer live snap, fall back to saved seed
+    var peerOn;
+    if (hasSnap) {
+      peerOn = snap[peerName] !== undefined ? snap[peerName] : false;
+    } else if (seedSet) {
+      // empty seedSet = deny all (new semantic)
+      peerOn = seedSet.has(peerName) || apps.some(function(a) { return seedSet.has(peerName + '/' + a.id); });
+    } else {
+      peerOn = false;
+    }
+
+    var isOpen = snap['__open__' + peerName] || false;
+
+    var row = document.createElement('div');
+    row.className = 'tunnel-peer-row';
+
+    var header = document.createElement('div');
+    header.className = 'tunnel-peer-header';
+
+    // Declare appList and updateToggleBtn up front so peerBox closure can reference them
+    var appList = null;
+    var updateToggleBtn = null;
+
+    // Custom pill toggle for the peer
+    var peerBox = _makePillBox('tpc-box tunnel-peer-cb', peerOn, function(box) {
+      var turningOn = !box.classList.contains('on');
+      box.classList.toggle('on');
+      if (appList) {
+        if (turningOn) {
+          appList.classList.add('open');
+          if (updateToggleBtn) updateToggleBtn();
+          var anyOn = Array.from(appList.querySelectorAll('.tunnel-app-cb')).some(function(b) { return b.classList.contains('on'); });
+          if (!anyOn) {
+            appList.querySelectorAll('.tunnel-app-cb').forEach(function(b) { b.classList.add('on'); });
+          }
+        } else {
+          appList.querySelectorAll('.tunnel-app-cb').forEach(function(b) { b.classList.remove('on'); });
+        }
+      }
+      saveTunnelPeers();
+    });
+    peerBox.dataset.peer = peerName;
+
+    var nameEl = document.createElement('span');
+    nameEl.className = 'tunnel-peer-name';
+    nameEl.textContent = peerName;
+
+    header.appendChild(peerBox);
+    header.appendChild(nameEl);
+
+    if (apps.length) {
+      appList = document.createElement('div');
+      appList.className = 'tunnel-apps-list' + (isOpen ? ' open' : '');
+
+      apps.forEach(function(a) {
+        var appItem = document.createElement('div');
+        appItem.className = 'tunnel-app-item';
+
+        var appOn;
+        if (hasSnap) {
+          var key = peerName + '/' + a.id;
+          appOn = snap[key] !== undefined ? snap[key] : false;
+        } else if (seedSet) {
+          appOn = seedSet.has(peerName) || seedSet.has(peerName + '/' + a.id);
+        } else {
+          appOn = false;
+        }
+
+        var appBox = _makePillBox('tpa-box tunnel-app-cb', appOn, function(box) {
+          box.classList.toggle('on');
+          var anyOn = Array.from(appList.querySelectorAll('.tunnel-app-cb')).some(function(b) { return b.classList.contains('on'); });
+          peerBox.classList.toggle('on', anyOn);
+          saveTunnelPeers();
+        });
+        appBox.dataset.appId = a.id;
+
+        var appName = document.createElement('a');
+        appName.textContent = (a.name || a.id);
+        appName.href = '#';
+        appName.style.cssText = 'color:var(--accent2);text-decoration:none;';
+        appName.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); openAppModal(a.id); });
+
+        var appStatus = document.createElement('span');
+        appStatus.style.cssText = 'margin-left:auto;font-size:0.68rem;color:var(--muted2);';
+        appStatus.textContent = a.status || '';
+
+        appItem.appendChild(appBox);
+        appItem.appendChild(appName);
+        appItem.appendChild(appStatus);
+        appList.appendChild(appItem);
+      });
+
+      var toggleBtn = document.createElement('span');
+      toggleBtn.className = 'tunnel-peer-toggle';
+      updateToggleBtn = function() {
+        toggleBtn.textContent = (appList.classList.contains('open') ? '▾ ' : '') + apps.length + ' app' + (apps.length !== 1 ? 's' : '');
+      };
+      updateToggleBtn();
+      toggleBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        appList.classList.toggle('open');
+        updateToggleBtn();
+      });
+      header.appendChild(toggleBtn);
+
+      row.appendChild(header);
+      row.appendChild(appList);
+    } else {
+      var noApps = document.createElement('span');
+      noApps.style.cssText = 'font-size:0.68rem;color:var(--muted2);margin-left:auto;';
+      noApps.textContent = 'no apps';
+      header.appendChild(noApps);
+      row.appendChild(header);
+    }
+
+    wrap.appendChild(row);
+  });
+}
+
+async function saveAccessControl() {
+  var body = {
+    allow_inbound_remoteapps:    document.getElementById('setting-inbound-apps').checked,
+    require_remoteapp_approval:  document.getElementById('setting-require-approval').checked,
+    require_resource_limits:     document.getElementById('setting-require-limits').checked,
+    allowed_images:              document.getElementById('policy-allowed-images').value.trim(),
+    blocked_images:              document.getElementById('policy-blocked-images').value.trim(),
+    allowed_source_peers:        document.getElementById('policy-allowed-peers').value.trim(),
+    allow_inbound_tunnels:       document.getElementById('setting-inbound-tunnels').checked,
+  };
+  var r = await fetch('/settings', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  if (r.ok) toast('Access control saved', 'ok');
+  else { var d = await r.json(); toast('Error: ' + d.error, 'error'); }
 }
 
 async function saveQuotas() {
   var body = {
-    max_cpu_per_pod:       parseFloat(document.getElementById('quota-cpu-pod').value)       || 0,
-    max_memory_mb_per_pod: parseInt(document.getElementById('quota-mem-pod').value, 10)     || 0,
-    max_replicas_per_app:  parseInt(document.getElementById('quota-replicas').value, 10)    || 0,
-    max_total_deployments: parseInt(document.getElementById('quota-total-deploys').value,10) || 0,
-    max_total_cpu:         parseFloat(document.getElementById('quota-total-cpu').value)      || 0,
-    max_total_memory_mb:   parseInt(document.getElementById('quota-total-mem').value, 10)   || 0,
+    max_cpu_request_per_pod:    document.getElementById('quota-cpu-req-pod').value.trim(),
+    max_cpu_limit_per_pod:      document.getElementById('quota-cpu-lim-pod').value.trim(),
+    max_memory_request_per_pod: document.getElementById('quota-mem-req-pod').value.trim(),
+    max_memory_limit_per_pod:   document.getElementById('quota-mem-lim-pod').value.trim(),
+    max_replicas_per_app:       parseInt(document.getElementById('quota-replicas').value, 10)      || 0,
+    max_total_deployments:      parseInt(document.getElementById('quota-total-deploys').value, 10) || 0,
+    max_total_pods:             parseInt(document.getElementById('quota-total-pods').value, 10)    || 0,
+    max_total_cpu_requests:     document.getElementById('quota-total-cpu-req').value.trim(),
+    max_total_memory_requests:  document.getElementById('quota-total-mem-req').value.trim(),
   };
   var r = await fetch('/settings', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -2185,7 +2792,7 @@ async function loadToken() {
     setSecret('settings-token-key', token);
     setSecret('token-fp', fp);
     document.getElementById('settings-token-url').textContent = url;
-    document.getElementById('token-pem').value = d.ca_pem || '';
+    setSecret('token-pem', d.ca_pem || '');
     document.getElementById('about-url').textContent = url;
   } catch(e) {}
 }
@@ -2236,6 +2843,16 @@ async function saveSetting(key, value) {
   });
   if (r.ok) toast('Saved', 'ok');
   else { var d = await r.json(); toast('Error: ' + d.error, 'error'); }
+}
+
+function saveTunnelPeers() {
+  window._loadedTunnelPeers = getTunnelPeerValue();
+  saveSetting('allowed_tunnel_peers', window._loadedTunnelPeers);
+}
+
+function saveInboundTunnels(enabled) {
+  saveSetting('allow_inbound_tunnels', enabled);
+  document.getElementById('tunnel-allowlist-section').classList.toggle('section-disabled', !enabled);
 }
 
 
@@ -2325,8 +2942,12 @@ function renderAppDetail(d) {
   html += '<div class="detail-block"><h4>Spec</h4>'
     + '<div class="detail-row"><span class="label">Image</span><span class="mono">' + (spec.image||'—') + '</span></div>'
     + '<div class="detail-row"><span class="label">Replicas</span><span>' + (spec.replicas||1) + '</span></div>'
-    + '<div class="detail-row"><span class="label">CPU</span><span>' + (spec.cpu ? spec.cpu+' cores':'—') + '</span></div>'
-    + '<div class="detail-row"><span class="label">Memory</span><span>' + (spec.memory_mb ? spec.memory_mb+' MiB':'—') + '</span></div>'
+    + (spec.resources && (spec.resources.requests || spec.resources.limits) ? (
+        '<div class="detail-row"><span class="label">CPU req / lim</span><span class="mono">'
+          + ((spec.resources.requests||{}).cpu||'—') + ' / ' + ((spec.resources.limits||{}).cpu||'—') + '</span></div>'
+        + '<div class="detail-row"><span class="label">Mem req / lim</span><span class="mono">'
+          + ((spec.resources.requests||{}).memory||'—') + ' / ' + ((spec.resources.limits||{}).memory||'—') + '</span></div>'
+      ) : '')
     + portsHtml
     + '</div>';
   html += '</div>';
@@ -2355,25 +2976,32 @@ function renderAppDetail(d) {
     }
   }
 
-  html += '<div class="detail-block" style="margin-top:0.75rem;"><h4>Edit Spec (YAML)</h4>'
-    + '<textarea id="app-spec-editor" style="width:100%;height:110px;background:var(--bg);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:0.5rem;font-family:monospace;font-size:0.8rem;resize:vertical;">'
-    + objToYaml(spec) + '</textarea></div>';
+  var isSubmitted = !!app.target_peer; // submitted apps own the spec; executing apps don't
+
+  if (isSubmitted) {
+    html += '<div class="detail-block" style="margin-top:0.75rem;"><h4>Edit Spec (YAML)</h4>'
+      + '<textarea id="app-spec-editor" style="width:100%;height:110px;background:var(--bg);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:0.5rem;font-family:monospace;font-size:0.8rem;resize:vertical;">'
+      + objToYaml(spec) + '</textarea></div>';
+  }
 
   html += '<div class="detail-actions">'
-    + '<label>Scale:</label>'
-    + '<input type="text" inputmode="numeric" id="scale-replicas-input" value="' + (spec.replicas||1) + '" style="width:65px;">'
-    + '<button class="btn-sm btn-success" id="modal-scale-btn">Scale</button>'
-    + '<button class="btn-sm" id="modal-spec-btn" style="margin-left:auto;">Apply Spec</button>'
+    + (isSubmitted
+        ? '<label>Scale:</label>'
+          + '<input type="text" inputmode="numeric" id="scale-replicas-input" value="' + (spec.replicas||1) + '" style="width:65px;">'
+          + '<button class="btn-sm btn-success" id="modal-scale-btn">Scale</button>'
+          + '<button class="btn-sm" id="modal-spec-btn" style="margin-left:auto;">Apply Spec</button>'
+        : '<span style="flex:1;"></span>')
     + '<button class="btn-sm btn-danger" id="modal-delete-btn">Delete</button>'
     + '</div>';
 
   document.getElementById('app-modal-body').innerHTML = html;
 
-  // Wire modal action buttons after innerHTML is set (avoids inline onclick quoting issues)
   var _id   = _currentAppId;
   var _name = app.name || '';
-  document.getElementById('modal-scale-btn').addEventListener('click', function() { scaleApp(_id); });
-  document.getElementById('modal-spec-btn').addEventListener('click', function() { updateAppSpec(_id); });
+  if (isSubmitted) {
+    document.getElementById('modal-scale-btn').addEventListener('click', function() { scaleApp(_id); });
+    document.getElementById('modal-spec-btn').addEventListener('click', function() { updateAppSpec(_id); });
+  }
   document.getElementById('modal-delete-btn').addEventListener('click', function() { deleteApp(_id, _name); });
 }
 

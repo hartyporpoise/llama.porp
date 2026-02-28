@@ -69,7 +69,7 @@ log.info("SELF_URL=%s", state.SELF_URL)
 
 # ── Restore persisted state ───────────────────────────────────
 
-from porpulsion.models import Peer, RemoteApp  # noqa: E402
+from porpulsion.models import Peer, RemoteApp, RemoteAppSpec  # noqa: E402
 
 for _p in tls.load_peers(state.NAMESPACE):
     state.peers[_p["name"]] = Peer(
@@ -78,7 +78,8 @@ for _p in tls.load_peers(state.NAMESPACE):
 _saved = tls.load_state_configmap(state.NAMESPACE)
 for _a in _saved.get("local_apps", []):
     _ra = RemoteApp(
-        id=_a["id"], name=_a["name"], spec=_a.get("spec", {}),
+        id=_a["id"], name=_a["name"],
+        spec=RemoteAppSpec.from_dict(_a.get("spec", {})),
         source_peer=_a.get("source_peer", ""), target_peer=_a.get("target_peer", ""),
         status=_a.get("status", "Unknown"),
         created_at=_a.get("created_at", ""), updated_at=_a.get("updated_at", ""),
@@ -88,9 +89,12 @@ if "settings" in _saved:
     for _k, _v in _saved["settings"].items():
         if hasattr(state.settings, _k):
             setattr(state.settings, _k, _v)
+for _entry in _saved.get("pending_approval", []):
+    if _entry.get("id"):
+        state.pending_approval[_entry["id"]] = _entry
 
-log.info("Restored %d peer(s), %d local app(s) from persistent storage",
-         len(state.peers), len(state.local_apps))
+log.info("Restored %d peer(s), %d local app(s), %d pending approval(s) from persistent storage",
+         len(state.peers), len(state.local_apps), len(state.pending_approval))
 
 # ── Flask app ─────────────────────────────────────────────────
 
@@ -213,21 +217,47 @@ def _reconstruct_remote_apps():
         restored = 0
         for dep in deploys.items:
             labels = dep.metadata.labels or {}
-            app_id     = labels.get("porpulsion.io/remote-app-id", "")
+            app_id      = labels.get("porpulsion.io/remote-app-id", "")
             source_peer = labels.get("porpulsion.io/source-peer", "unknown")
             if not app_id or app_id in state.remote_apps:
                 continue
-            ready = dep.status.ready_replicas or 0
+            ready   = dep.status.ready_replicas or 0
             desired = dep.spec.replicas or 1
-            status = "Running" if ready >= desired else "Pending"
             # Reconstruct name from deploy_name: "ra-{id}-{name}" → strip prefix
             deploy_name = dep.metadata.name
             name = deploy_name[len(f"ra-{app_id}-"):] if deploy_name.startswith(f"ra-{app_id}-") else deploy_name
+            already_ready = ready >= desired
             ra = RemoteApp(
-                id=app_id, name=name, spec={},
-                source_peer=source_peer, status=status,
+                id=app_id, name=name, spec=RemoteAppSpec(image="", replicas=desired),
+                source_peer=source_peer,
+                status="Ready" if already_ready else "Running",
             )
             state.remote_apps[app_id] = ra
+
+            # If not yet ready, find the source peer and resume polling so the
+            # status will eventually transition to Ready.
+            if not already_ready:
+                peer = state.peers.get(source_peer)
+                callback_url = peer.url if peer else ""
+                from porpulsion.k8s.executor import run_workload
+                # run_workload restarts the deployment — we only want to resume
+                # the status watcher. Kick a lightweight watcher thread instead.
+                def _watch(ra=ra, callback_url=callback_url, peer=peer, desired=desired):
+                    from porpulsion.k8s import executor as _ex
+                    import time as _time
+                    deploy_nm = f"ra-{ra.id}-{ra.name}"[:63]
+                    for _ in range(60):
+                        _time.sleep(2)
+                        try:
+                            d = _ex.apps_v1.read_namespaced_deployment_status(deploy_nm, state.NAMESPACE)
+                            if (d.status.ready_replicas or 0) >= desired:
+                                _ex._report_status(ra, callback_url, "Ready", peer=peer)
+                                return
+                        except Exception:
+                            pass
+                    _ex._report_status(ra, callback_url, "Timeout", peer=peer)
+                threading.Thread(target=_watch, daemon=True).start()
+
             restored += 1
         log.info("Reconstructed %d remote app(s) from k8s Deployments", restored)
     except Exception as exc:

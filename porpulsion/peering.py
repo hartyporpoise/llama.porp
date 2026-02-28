@@ -132,3 +132,35 @@ def verify_peer(request, peers):
 
     log.warning("verify_peer: client cert issuer not matched to any known peer CA")
     return False
+
+
+def identify_peer(request, peers) -> str | None:
+    """
+    Like verify_peer but returns the peer name instead of True, or None if not verified.
+    Used where the caller needs to know *which* peer is calling.
+    """
+    from cryptography.x509 import load_pem_x509_certificate
+
+    client_cert_pem = request.environ.get("SSL_CLIENT_CERT", "")
+    if not client_cert_pem:
+        return None
+
+    try:
+        leaf = load_pem_x509_certificate(
+            client_cert_pem.encode() if isinstance(client_cert_pem, str) else client_cert_pem)
+        leaf_issuer_dn = leaf.issuer
+    except Exception:
+        return None
+
+    for peer in peers.values():
+        if not peer.ca_pem:
+            continue
+        try:
+            ca = load_pem_x509_certificate(
+                peer.ca_pem.encode() if isinstance(peer.ca_pem, str) else peer.ca_pem)
+            if leaf_issuer_dn == ca.subject:
+                return peer.name
+        except Exception:
+            continue
+
+    return None

@@ -131,8 +131,13 @@ replicas: 2
 ports:
   - port: 80
     name: http
-cpu: 0.5
-memory_mb: 256
+resources:
+  requests:
+    cpu: 250m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
 ```
 
 The spec is forwarded to the peer cluster, which creates a Kubernetes Deployment in the `porpulsion` namespace. Status reflects back automatically (`Pending` → `Running`).
@@ -152,11 +157,14 @@ Proxy URL format: `http://<dashboard>/remoteapp/<id>/proxy/<port>/`
 | `image` | string | **required** | Container image, e.g. `nginx:latest` |
 | `replicas` | integer | `1` | Pod replica count |
 | `ports` | list | `[]` | Ports to expose via HTTP proxy. Each entry: `port` (required), `name` (optional) |
-| `cpu` | float | — | CPU cores per pod, e.g. `0.5` |
-| `memory_mb` | integer | — | Memory in MiB per pod, e.g. `256` |
-| `env` | map | `{}` | Environment variables injected into the pod |
-| `command` | string/list | — | Override container entrypoint |
-| `args` | string/list | — | Arguments passed to the entrypoint |
+| `resources` | object | — | Kubernetes resource requests and limits. Contains `requests` and/or `limits` with `cpu` (e.g. `250m`, `1`) and `memory` (e.g. `128Mi`, `2Gi`) quantity strings |
+| `command` | list | — | Override container ENTRYPOINT, e.g. `["/bin/sh", "-c"]` |
+| `args` | list | — | Override container CMD / arguments |
+| `env` | list | — | Environment variables. Each entry: `name` + `value`, or `valueFrom.secretKeyRef` / `valueFrom.configMapKeyRef` |
+| `imagePullPolicy` | string | `IfNotPresent` | `Always`, `IfNotPresent`, or `Never` |
+| `imagePullSecrets` | list | — | Names of k8s Secrets containing registry credentials |
+| `readinessProbe` | object | — | `httpGet` (`path`, `port`) or `exec` (`command`), plus `initialDelaySeconds`, `periodSeconds`, `failureThreshold` |
+| `securityContext` | object | — | `runAsNonRoot`, `runAsUser`, `runAsGroup`, `fsGroup`, `readOnlyRootFilesystem` |
 
 ---
 
@@ -207,6 +215,7 @@ porpulsion/
 | TLS certs + invite token | `porpulsion-credentials` Secret | Generated once, reused on restart |
 | Peers (name, URL, CA cert) | `porpulsion-credentials` Secret | Written on every peer add/remove |
 | Submitted apps | `porpulsion-state` ConfigMap | Written on create, status update, delete |
+| Pending approval queue | `porpulsion-state` ConfigMap | Written on enqueue, approve, and reject |
 | Settings | `porpulsion-state` ConfigMap | Written on every settings change |
 | Executing apps | Reconstructed from k8s Deployments | Labels: `porpulsion.io/remote-app-id` |
 

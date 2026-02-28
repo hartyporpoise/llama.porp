@@ -1,11 +1,12 @@
 import logging
+import uuid
 from datetime import datetime, timezone
 
 import requests as _req
 from flask import Blueprint, request, jsonify
 
 from porpulsion import state, tls
-from porpulsion.models import RemoteApp
+from porpulsion.models import RemoteApp, RemoteAppSpec
 from porpulsion.peering import verify_peer
 from porpulsion.k8s.executor import (
     run_workload, delete_workload, scale_workload, get_deployment_status,
@@ -16,6 +17,34 @@ log = logging.getLogger("porpulsion.routes.workloads")
 bp = Blueprint("workloads", __name__)
 
 
+# ── k8s quantity parser ────────────────────────────────────────
+_MEMORY_SUFFIXES = {
+    "ki": 2**10, "mi": 2**20, "gi": 2**30, "ti": 2**40,
+    "k":  1e3,   "m":  1e6,   "g":  1e9,   "t":  1e12,
+}
+
+
+def _parse_quantity(q: str) -> float:
+    """
+    Parse a Kubernetes quantity string into a normalised float.
+    CPU: returns cores (e.g. "250m" → 0.25, "1" → 1.0).
+    Memory: returns bytes (e.g. "64Mi" → 67108864, "1Gi" → 1073741824).
+    Returns 0.0 for empty/None.
+    """
+    if not q:
+        return 0.0
+    q = str(q).strip()
+    # CPU millicore suffix
+    if q.endswith("m") and not any(q.lower().endswith(s) for s in _MEMORY_SUFFIXES):
+        return float(q[:-1]) / 1000.0
+    # Memory suffixes
+    lower = q.lower()
+    for suffix, factor in _MEMORY_SUFFIXES.items():
+        if lower.endswith(suffix):
+            return float(q[: -len(suffix)]) * factor
+    return float(q)
+
+
 def _peer_session(peer=None) -> _req.Session:
     session = _req.Session()
     session.cert = (state.AGENT_CERT_PATH, state.AGENT_KEY_PATH)
@@ -23,18 +52,72 @@ def _peer_session(peer=None) -> _req.Session:
     return session
 
 
-def _check_resource_quota(spec: dict) -> str | None:
+def _check_image_policy(image: str) -> str | None:
+    """Check image against allowed/blocked prefix lists. Returns error string or None."""
     s = state.settings
-    req_cpu      = float(spec.get("cpu", 0) or 0)
-    req_mem_mb   = int(spec.get("memory_mb", 0) or 0)
-    req_replicas = int(spec.get("replicas", 1) or 1)
 
-    if s.max_cpu_per_pod and req_cpu > s.max_cpu_per_pod:
-        return (f"Requested {req_cpu} CPU cores exceeds this cluster's per-pod limit "
-                f"of {s.max_cpu_per_pod} cores")
-    if s.max_memory_mb_per_pod and req_mem_mb > s.max_memory_mb_per_pod:
-        return (f"Requested {req_mem_mb} MiB exceeds this cluster's per-pod memory limit "
-                f"of {s.max_memory_mb_per_pod} MiB")
+    blocked = [p.strip() for p in s.blocked_images.split(",") if p.strip()]
+    for prefix in blocked:
+        if image.startswith(prefix):
+            return f"Image '{image}' is blocked by this cluster's policy"
+
+    allowed = [p.strip() for p in s.allowed_images.split(",") if p.strip()]
+    if allowed and not any(image.startswith(p) for p in allowed):
+        return (f"Image '{image}' is not in this cluster's allowed image list "
+                f"({', '.join(allowed)})")
+
+    return None
+
+
+def _check_resource_quota(spec: RemoteAppSpec, source_peer: str = "") -> str | None:
+    s = state.settings
+    res = spec.resources
+    req_cpu_req = _parse_quantity(res.requests.get("cpu", ""))
+    req_cpu_lim = _parse_quantity(res.limits.get("cpu", ""))
+    req_mem_req = _parse_quantity(res.requests.get("memory", ""))
+    req_mem_lim = _parse_quantity(res.limits.get("memory", ""))
+    req_replicas = spec.replicas
+
+    # Allowed source peers
+    allowed_peers = [p.strip() for p in s.allowed_source_peers.split(",") if p.strip()]
+    if allowed_peers and source_peer and source_peer not in allowed_peers:
+        return f"Peer '{source_peer}' is not permitted to submit workloads to this cluster"
+
+    # Require resource limits
+    if s.require_resource_limits and res.is_empty():
+        return "This cluster requires resources.requests to be specified in the spec"
+
+    # Image policy
+    if spec.image:
+        img_err = _check_image_policy(spec.image)
+        if img_err:
+            return img_err
+
+    # Per-pod CPU
+    if s.max_cpu_request_per_pod and req_cpu_req:
+        limit = _parse_quantity(s.max_cpu_request_per_pod)
+        if req_cpu_req > limit:
+            return (f"CPU request {res.requests['cpu']} exceeds per-pod limit "
+                    f"of {s.max_cpu_request_per_pod}")
+    if s.max_cpu_limit_per_pod and req_cpu_lim:
+        limit = _parse_quantity(s.max_cpu_limit_per_pod)
+        if req_cpu_lim > limit:
+            return (f"CPU limit {res.limits['cpu']} exceeds per-pod limit "
+                    f"of {s.max_cpu_limit_per_pod}")
+
+    # Per-pod memory
+    if s.max_memory_request_per_pod and req_mem_req:
+        limit = _parse_quantity(s.max_memory_request_per_pod)
+        if req_mem_req > limit:
+            return (f"Memory request {res.requests['memory']} exceeds per-pod limit "
+                    f"of {s.max_memory_request_per_pod}")
+    if s.max_memory_limit_per_pod and req_mem_lim:
+        limit = _parse_quantity(s.max_memory_limit_per_pod)
+        if req_mem_lim > limit:
+            return (f"Memory limit {res.limits['memory']} exceeds per-pod limit "
+                    f"of {s.max_memory_limit_per_pod}")
+
+    # Per-app replicas
     if s.max_replicas_per_app and req_replicas > s.max_replicas_per_app:
         return (f"Requested {req_replicas} replicas exceeds this cluster's per-app limit "
                 f"of {s.max_replicas_per_app}")
@@ -45,18 +128,30 @@ def _check_resource_quota(spec: dict) -> str | None:
     if s.max_total_deployments and len(active_apps) >= s.max_total_deployments:
         return (f"This cluster has reached its deployment limit "
                 f"({s.max_total_deployments} concurrent RemoteApps)")
-    if s.max_total_cpu:
-        used_cpu = sum(float(a.spec.get("cpu", 0) or 0) for a in active_apps)
-        if used_cpu + req_cpu > s.max_total_cpu:
-            return (f"Insufficient CPU capacity: {req_cpu} requested, "
-                    f"{s.max_total_cpu - used_cpu:.2f} available "
-                    f"(limit {s.max_total_cpu} total)")
-    if s.max_total_memory_mb:
-        used_mem = sum(int(a.spec.get("memory_mb", 0) or 0) for a in active_apps)
-        if used_mem + req_mem_mb > s.max_total_memory_mb:
-            return (f"Insufficient memory: {req_mem_mb} MiB requested, "
-                    f"{s.max_total_memory_mb - used_mem} MiB available "
-                    f"(limit {s.max_total_memory_mb} MiB total)")
+
+    if s.max_total_pods:
+        used_pods = sum(a.spec.replicas for a in active_apps)
+        if used_pods + req_replicas > s.max_total_pods:
+            return (f"Insufficient pod capacity: {req_replicas} requested, "
+                    f"{s.max_total_pods - used_pods} available "
+                    f"(limit {s.max_total_pods} total pods)")
+
+    if s.max_total_cpu_requests and req_cpu_req:
+        max_total = _parse_quantity(s.max_total_cpu_requests)
+        used = sum(_parse_quantity(a.spec.resources.requests.get("cpu", ""))
+                   for a in active_apps)
+        if used + req_cpu_req > max_total:
+            return (f"Insufficient CPU capacity: request {res.requests.get('cpu','?')} "
+                    f"would exceed cluster total of {s.max_total_cpu_requests}")
+
+    if s.max_total_memory_requests and req_mem_req:
+        max_total = _parse_quantity(s.max_total_memory_requests)
+        used = sum(_parse_quantity(a.spec.resources.requests.get("memory", ""))
+                   for a in active_apps)
+        if used + req_mem_req > max_total:
+            return (f"Insufficient memory: request {res.requests.get('memory','?')} "
+                    f"would exceed cluster total of {s.max_total_memory_requests}")
+
     return None
 
 
@@ -69,7 +164,7 @@ def create_remoteapp():
         return jsonify({"error": "no peers connected"}), 503
 
     peer = next(iter(state.peers.values()))
-    ra = RemoteApp(name=data["name"], spec=data.get("spec", {}),
+    ra = RemoteApp(name=data["name"], spec=RemoteAppSpec.from_dict(data.get("spec", {})),
                    source_peer=state.AGENT_NAME, target_peer=peer.name)
     state.local_apps[ra.id] = ra
 
@@ -77,7 +172,7 @@ def create_remoteapp():
         session = _peer_session(peer)
         resp = session.post(
             f"{peer.url}/remoteapp/receive",
-            json={"id": ra.id, "name": ra.name, "spec": ra.spec,
+            json={"id": ra.id, "name": ra.name, "spec": ra.spec.to_dict(),
                   "source_peer": state.AGENT_NAME},
             timeout=5,
         )
@@ -106,25 +201,91 @@ def receive_remoteapp():
         }), 403
 
     data = request.json
-    spec = data.get("spec", {})
-    quota_err = _check_resource_quota(spec)
+    spec = RemoteAppSpec.from_dict(data.get("spec", {}))
+    source_peer = data.get("source_peer", "unknown")
+    quota_err = _check_resource_quota(spec, source_peer=source_peer)
     if quota_err:
-        log.warning("RemoteApp rejected by quota: %s", quota_err)
+        log.warning("RemoteApp rejected by policy: %s", quota_err)
         return jsonify({"error": quota_err, "quota_violation": True}), 429
+
+    app_id = data.get("id") or uuid.uuid4().hex[:8]
+    source = state.peers.get(source_peer)
+    callback_url = source.url if source else ""
+
+    if state.settings.require_remoteapp_approval:
+        entry = {
+            "id": app_id,
+            "name": data["name"],
+            "spec": spec.to_dict(),
+            "source_peer": source_peer,
+            "callback_url": callback_url,
+            "since": datetime.now(timezone.utc).isoformat(),
+        }
+        state.pending_approval[app_id] = entry
+        log.info("App %s (%s) queued for approval from %s", data["name"], app_id, source_peer)
+        tls.save_state_configmap(state.NAMESPACE, state.local_apps, state.settings,
+                                 state.pending_approval)
+        return jsonify({"id": app_id, "status": "pending_approval"})
 
     ra = RemoteApp(
         name=data["name"],
         spec=spec,
-        source_peer=data.get("source_peer", "unknown"),
-        id=data.get("id"),
+        source_peer=source_peer,
+        id=app_id,
     )
     state.remote_apps[ra.id] = ra
     log.info("Received app %s (%s) from %s", ra.name, ra.id, ra.source_peer)
-
-    source = state.peers.get(ra.source_peer)
-    callback_url = source.url if source else ""
     run_workload(ra, callback_url, peer=source)
     return jsonify(ra.to_dict())
+
+
+@bp.route("/remoteapp/pending-approval")
+def list_pending_approval():
+    return jsonify(list(state.pending_approval.values()))
+
+
+@bp.route("/remoteapp/<app_id>/approve", methods=["POST"])
+def approve_remoteapp(app_id):
+    if app_id not in state.pending_approval:
+        return jsonify({"error": "not found"}), 404
+    entry = state.pending_approval.pop(app_id)
+    source = state.peers.get(entry["source_peer"])
+    ra = RemoteApp(
+        name=entry["name"],
+        spec=RemoteAppSpec.from_dict(entry["spec"]),
+        source_peer=entry["source_peer"],
+        id=app_id,
+    )
+    state.remote_apps[ra.id] = ra
+    log.info("Approved app %s (%s) from %s", ra.name, ra.id, ra.source_peer)
+    tls.save_state_configmap(state.NAMESPACE, state.local_apps, state.settings,
+                             state.pending_approval)
+    run_workload(ra, entry["callback_url"], peer=source)
+    return jsonify({"ok": True})
+
+
+@bp.route("/remoteapp/<app_id>/reject", methods=["POST"])
+def reject_remoteapp(app_id):
+    if app_id not in state.pending_approval:
+        return jsonify({"error": "not found"}), 404
+    entry = state.pending_approval.pop(app_id)
+    log.info("Rejected app %s (%s) from %s", entry["name"], app_id, entry["source_peer"])
+    tls.save_state_configmap(state.NAMESPACE, state.local_apps, state.settings,
+                             state.pending_approval)
+    # Notify the source peer the app was rejected so their status updates
+    source = state.peers.get(entry["source_peer"])
+    if source:
+        try:
+            session = _peer_session(source)
+            session.post(
+                f"{source.url}/remoteapp/{app_id}/status",
+                json={"status": "Rejected",
+                      "updated_at": datetime.now(timezone.utc).isoformat()},
+                timeout=5,
+            )
+        except Exception as e:
+            log.warning("Could not notify source of rejection: %s", e)
+    return jsonify({"ok": True})
 
 
 @bp.route("/remoteapps")
@@ -229,7 +390,7 @@ def scale_remoteapp(app_id):
                 timeout=5,
             )
             if resp.ok:
-                ra.spec["replicas"] = replicas
+                ra.spec.replicas = replicas
                 return jsonify({"ok": True, "replicas": replicas})
             return jsonify({"error": resp.json().get("error", "peer error")}), resp.status_code
         except Exception as e:
@@ -239,7 +400,7 @@ def scale_remoteapp(app_id):
         ra = state.remote_apps[app_id]
         try:
             scale_workload(ra, replicas)
-            ra.spec["replicas"] = replicas
+            ra.spec.replicas = replicas
             return jsonify({"ok": True, "replicas": replicas})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -262,7 +423,7 @@ def scale_remoteapp_remote(app_id):
     ra = state.remote_apps[app_id]
     try:
         scale_workload(ra, int(replicas))
-        ra.spec["replicas"] = int(replicas)
+        ra.spec.replicas = int(replicas)
         return jsonify({"ok": True, "replicas": int(replicas)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -327,7 +488,7 @@ def update_remoteapp_spec(app_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
-    ra.spec = new_spec
+    ra.spec = RemoteAppSpec.from_dict(new_spec)
     return jsonify(ra.to_dict())
 
 
@@ -344,11 +505,12 @@ def update_remoteapp_spec_remote(app_id):
         return jsonify({"error": "app not found"}), 404
 
     ra = state.remote_apps[app_id]
-    quota_err = _check_resource_quota(new_spec)
+    parsed_spec = RemoteAppSpec.from_dict(new_spec)
+    quota_err = _check_resource_quota(parsed_spec, source_peer=ra.source_peer)
     if quota_err:
         return jsonify({"error": quota_err, "quota_violation": True}), 429
 
-    ra.spec = new_spec
+    ra.spec = parsed_spec
     source = state.peers.get(ra.source_peer)
     callback_url = source.url if source else ""
     run_workload(ra, callback_url, peer=source)
