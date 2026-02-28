@@ -9,7 +9,7 @@ namespace: porpulsion
 # ── Agent ──────────────────────────────────────────────────────────────────────
 agent:
   # -- Container image for the porpulsion agent.
-  image: porpulsion:latest
+  image: ghcr.io/hartyporpoise/porpulsion:latest
 
   # -- Image pull policy. Use `Always` when pushing to a remote registry.
   pullPolicy: IfNotPresent
