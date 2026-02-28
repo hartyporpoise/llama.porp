@@ -113,6 +113,40 @@ kubectl port-forward svc/porpulsion 8443:8443 -n porpulsion   # mTLS agent
 
 ---
 
+## Settings
+
+Managed per-agent from the **Settings** page in the dashboard.
+
+### Access control
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Allow inbound workloads | `true` | Accept RemoteApp submissions from peers |
+| Require manual approval | `false` | Queue inbound apps for approval before executing |
+| Allowed image prefixes | _(empty)_ | Comma-separated list; empty = allow all |
+| Blocked image prefixes | _(empty)_ | Always rejected regardless of allowed list |
+| Allowed source peers | _(empty)_ | Comma-separated peer names; empty = all connected |
+
+### Resource quotas
+
+Enforced on **inbound** workloads at receive time. All CPU/memory values are k8s quantity strings.
+
+| Setting | Description |
+|---------|-------------|
+| Require resource requests | Reject apps that omit `resources.requests.cpu` or `.memory` |
+| Require resource limits | Reject apps that omit `resources.limits.cpu` or `.memory` |
+| Max CPU request per pod | e.g. `500m` |
+| Max CPU limit per pod | e.g. `1` |
+| Max memory request per pod | e.g. `128Mi` |
+| Max memory limit per pod | e.g. `256Mi` |
+| Max replicas per app | Integer; `0` = unlimited |
+| Max concurrent deployments | Integer; `0` = unlimited |
+| Max total pods | Integer; `0` = unlimited |
+| Max total CPU requests | e.g. `8` (aggregate across all running apps) |
+| Max total memory requests | e.g. `32Gi` (aggregate across all running apps) |
+
+---
+
 ## Usage
 
 ### 1 · Peer two clusters
@@ -190,7 +224,7 @@ porpulsion/
 │   └── dashboard.html    # Single-page dashboard (no build step)
 ├── static/
 │   └── logo.png
-├── chart/porpulsion/     # Helm chart
+├── charts/porpulsion/    # Helm chart
 │   ├── Chart.yaml
 │   ├── values.yaml
 │   └── templates/

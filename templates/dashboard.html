@@ -567,6 +567,14 @@
 
     /* ── Settings page ───────────────────────────────── */
     .quota-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .quota-group { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-bottom: 0.5rem; }
+    .quota-pair { display: flex; flex-direction: column; gap: 0.45rem; padding: 0.6rem 0.75rem 0.7rem; background: var(--surface2); border-radius: 6px; border: 1px solid var(--border); }
+    .quota-pair-label { font-size: 0.67rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--accent); }
+    .quota-pair-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+    .quota-pair-inputs.single { grid-template-columns: 1fr; }
+    .quota-pair-inputs .form-group { margin: 0; }
+    .quota-pair-inputs .form-label { font-size: 0.68rem; margin-bottom: 0.2rem; }
+    .quota-pair-inputs input { padding: 0.28rem 0.5rem; font-size: 0.78rem; }
     .settings-section { margin-bottom: 0; }
     .settings-divider { border: none; border-top: 1px solid var(--border); margin: 0.85rem 0; }
     .policy-input-row { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.75rem; }
@@ -1308,46 +1316,78 @@
                 <span class="toggle-slider"></span>
               </label>
             </div>
-            <div class="section-label" style="margin-top:1rem;">Per-pod limits</div>
-            <div class="quota-grid" style="margin-bottom:1rem;">
-              <div class="form-group">
-                <label class="form-label">Max CPU request per pod</label>
-                <input type="text" id="quota-cpu-req-pod" placeholder="e.g. 500m, 2 — blank = unlimited">
+            <hr class="settings-divider">
+            <div class="section-label" style="margin-top:0;">Per-pod limits</div>
+            <div class="quota-group">
+              <div class="quota-pair">
+                <div class="quota-pair-label">CPU</div>
+                <div class="quota-pair-inputs">
+                  <div class="form-group">
+                    <label class="form-label">Request</label>
+                    <input type="text" id="quota-cpu-req-pod" placeholder="e.g. 250m — blank = unlimited">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Limit</label>
+                    <input type="text" id="quota-cpu-lim-pod" placeholder="e.g. 500m — blank = unlimited">
+                  </div>
+                </div>
               </div>
-              <div class="form-group">
-                <label class="form-label">Max CPU limit per pod</label>
-                <input type="text" id="quota-cpu-lim-pod" placeholder="e.g. 1, 2000m — blank = unlimited">
+              <div class="quota-pair">
+                <div class="quota-pair-label">Memory</div>
+                <div class="quota-pair-inputs">
+                  <div class="form-group">
+                    <label class="form-label">Request</label>
+                    <input type="text" id="quota-mem-req-pod" placeholder="e.g. 128Mi — blank = unlimited">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Limit</label>
+                    <input type="text" id="quota-mem-lim-pod" placeholder="e.g. 256Mi — blank = unlimited">
+                  </div>
+                </div>
               </div>
-              <div class="form-group">
-                <label class="form-label">Max memory request per pod</label>
-                <input type="text" id="quota-mem-req-pod" placeholder="e.g. 128Mi, 1Gi — blank = unlimited">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Max memory limit per pod</label>
-                <input type="text" id="quota-mem-lim-pod" placeholder="e.g. 512Mi, 2Gi — blank = unlimited">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Max replicas per app</label>
-                <input type="text" inputmode="numeric" id="quota-replicas" placeholder="0 = unlimited">
+              <div class="quota-pair">
+                <div class="quota-pair-label">Replicas</div>
+                <div class="quota-pair-inputs single">
+                  <div class="form-group">
+                    <label class="form-label">Max per app</label>
+                    <input type="text" inputmode="numeric" id="quota-replicas" placeholder="0 = unlimited">
+                  </div>
+                </div>
               </div>
             </div>
-            <div class="section-label">Aggregate limits</div>
-            <div class="quota-grid" style="margin-bottom:1rem;">
-              <div class="form-group">
-                <label class="form-label">Max concurrent deployments</label>
-                <input type="text" inputmode="numeric" id="quota-total-deploys" placeholder="0 = unlimited">
+            <hr class="settings-divider">
+            <div class="section-label" style="margin-top:0;">Aggregate limits</div>
+            <div class="quota-group">
+              <div class="quota-pair">
+                <div class="quota-pair-label">CPU</div>
+                <div class="quota-pair-inputs single">
+                  <div class="form-group">
+                    <label class="form-label">Max total requests</label>
+                    <input type="text" id="quota-total-cpu-req" placeholder="e.g. 8 — blank = unlimited">
+                  </div>
+                </div>
               </div>
-              <div class="form-group">
-                <label class="form-label">Max total pods</label>
-                <input type="text" inputmode="numeric" id="quota-total-pods" placeholder="0 = unlimited">
+              <div class="quota-pair">
+                <div class="quota-pair-label">Memory</div>
+                <div class="quota-pair-inputs single">
+                  <div class="form-group">
+                    <label class="form-label">Max total requests</label>
+                    <input type="text" id="quota-total-mem-req" placeholder="e.g. 32Gi — blank = unlimited">
+                  </div>
+                </div>
               </div>
-              <div class="form-group">
-                <label class="form-label">Max total CPU requests</label>
-                <input type="text" id="quota-total-cpu-req" placeholder="e.g. 8, 16000m — blank = unlimited">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Max total memory requests</label>
-                <input type="text" id="quota-total-mem-req" placeholder="e.g. 32Gi, 16384Mi — blank = unlimited">
+              <div class="quota-pair">
+                <div class="quota-pair-label">Workloads</div>
+                <div class="quota-pair-inputs">
+                  <div class="form-group">
+                    <label class="form-label">Max deployments</label>
+                    <input type="text" inputmode="numeric" id="quota-total-deploys" placeholder="0 = unlimited">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Max pods</label>
+                    <input type="text" inputmode="numeric" id="quota-total-pods" placeholder="0 = unlimited">
+                  </div>
+                </div>
               </div>
             </div>
             <div class="flex-end">
