@@ -62,7 +62,7 @@ deploy: ## Full deploy: start clusters, build image, helm install both agents
 			| sed 's|127.0.0.1:[0-9]*|cluster-a:6443|g' \
 			> /tmp/kubeconfig-a.yaml && \
 		chmod 600 /tmp/kubeconfig-a.yaml && \
-		KUBECONFIG=/tmp/kubeconfig-a.yaml helm upgrade --install porpulsion /chart/porpulsion \
+		KUBECONFIG=/tmp/kubeconfig-a.yaml helm upgrade --install porpulsion /charts/porpulsion \
 			--create-namespace --namespace porpulsion \
 			--set agent.agentName=cluster-a \
 			--set agent.selfUrl=https://$$IP_A:30443 \
@@ -83,7 +83,7 @@ deploy: ## Full deploy: start clusters, build image, helm install both agents
 			| sed 's|127.0.0.1:[0-9]*|cluster-b:6444|g' \
 			> /tmp/kubeconfig-b.yaml && \
 		chmod 600 /tmp/kubeconfig-b.yaml && \
-		KUBECONFIG=/tmp/kubeconfig-b.yaml helm upgrade --install porpulsion /chart/porpulsion \
+		KUBECONFIG=/tmp/kubeconfig-b.yaml helm upgrade --install porpulsion /charts/porpulsion \
 			--create-namespace --namespace porpulsion \
 			--set agent.agentName=cluster-b \
 			--set agent.selfUrl=https://$$IP_B:30443 \
@@ -125,7 +125,7 @@ redeploy: ## Rebuild agent image + helm upgrade (clusters must already be runnin
 			| sed 's|127.0.0.1:[0-9]*|cluster-a:6443|g' \
 			> /tmp/kubeconfig-a.yaml && \
 		chmod 600 /tmp/kubeconfig-a.yaml && \
-		KUBECONFIG=/tmp/kubeconfig-a.yaml helm upgrade --install porpulsion /chart/porpulsion \
+		KUBECONFIG=/tmp/kubeconfig-a.yaml helm upgrade --install porpulsion /charts/porpulsion \
 			--create-namespace --namespace porpulsion \
 			--set agent.agentName=cluster-a \
 			--set agent.selfUrl=https://$$IP_A:30443 \
@@ -145,7 +145,7 @@ redeploy: ## Rebuild agent image + helm upgrade (clusters must already be runnin
 			| sed 's|127.0.0.1:[0-9]*|cluster-b:6444|g' \
 			> /tmp/kubeconfig-b.yaml && \
 		chmod 600 /tmp/kubeconfig-b.yaml && \
-		KUBECONFIG=/tmp/kubeconfig-b.yaml helm upgrade --install porpulsion /chart/porpulsion \
+		KUBECONFIG=/tmp/kubeconfig-b.yaml helm upgrade --install porpulsion /charts/porpulsion \
 			--create-namespace --namespace porpulsion \
 			--set agent.agentName=cluster-b \
 			--set agent.selfUrl=https://$$IP_B:30443 \

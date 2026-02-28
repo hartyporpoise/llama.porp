@@ -18,9 +18,13 @@ bp = Blueprint("workloads", __name__)
 
 
 # ── k8s quantity parser ────────────────────────────────────────
+# Memory suffixes — deliberately excludes bare "m" to avoid collision with CPU millicores.
+# In practice no one uses "m" for memory (they use "Mi"/"Gi"). If someone passes "500M"
+# that's also unusual; we treat it as megabytes via the "m" → millicore branch below and
+# let the caller figure it out — the important thing is "500m" CPU works correctly.
 _MEMORY_SUFFIXES = {
     "ki": 2**10, "mi": 2**20, "gi": 2**30, "ti": 2**40,
-    "k":  1e3,   "m":  1e6,   "g":  1e9,   "t":  1e12,
+    "k":  1e3,               "g":  1e9,   "t":  1e12,
 }
 
 
@@ -30,18 +34,24 @@ def _parse_quantity(q: str) -> float:
     CPU: returns cores (e.g. "250m" → 0.25, "1" → 1.0).
     Memory: returns bytes (e.g. "64Mi" → 67108864, "1Gi" → 1073741824).
     Returns 0.0 for empty/None.
+
+    Detection order:
+      1. Binary/decimal memory suffixes (ki, mi, gi, ti, k, g, t) — checked first so
+         "128Mi" is never confused with a millicore value.
+      2. Bare "m" suffix → CPU millicores (500m → 0.5 cores).
+      3. Plain number → assume cores for CPU, bytes for memory (caller decides unit).
     """
     if not q:
         return 0.0
     q = str(q).strip()
-    # CPU millicore suffix
-    if q.endswith("m") and not any(q.lower().endswith(s) for s in _MEMORY_SUFFIXES):
-        return float(q[:-1]) / 1000.0
-    # Memory suffixes
     lower = q.lower()
+    # Memory suffixes (multi-char checked before single-char via dict order)
     for suffix, factor in _MEMORY_SUFFIXES.items():
         if lower.endswith(suffix):
             return float(q[: -len(suffix)]) * factor
+    # CPU millicore — bare "m" suffix, e.g. "500m"
+    if lower.endswith("m"):
+        return float(q[:-1]) / 1000.0
     return float(q)
 
 
@@ -72,20 +82,35 @@ def _check_image_policy(image: str) -> str | None:
 def _check_resource_quota(spec: RemoteAppSpec, source_peer: str = "") -> str | None:
     s = state.settings
     res = spec.resources
+
+    # Presence requirements — checked before any numeric limits
+    if s.require_resource_requests:
+        if not res.requests.get("cpu") or not res.requests.get("memory"):
+            return "This cluster requires resource requests (resources.requests.cpu and resources.requests.memory)"
+    if s.require_resource_limits:
+        if not res.limits.get("cpu") or not res.limits.get("memory"):
+            return "This cluster requires resource limits (resources.limits.cpu and resources.limits.memory)"
+
     req_cpu_req = _parse_quantity(res.requests.get("cpu", ""))
     req_cpu_lim = _parse_quantity(res.limits.get("cpu", ""))
     req_mem_req = _parse_quantity(res.requests.get("memory", ""))
     req_mem_lim = _parse_quantity(res.limits.get("memory", ""))
     req_replicas = spec.replicas
+    log.debug(
+        "Quota check: cpu_req=%.4f cpu_lim=%.4f mem_req=%.0f mem_lim=%.0f replicas=%d | "
+        "limits: cpu_req=%s cpu_lim=%s mem_req=%s mem_lim=%s replicas=%s deploys=%s pods=%s "
+        "total_cpu=%s total_mem=%s",
+        req_cpu_req, req_cpu_lim, req_mem_req, req_mem_lim, req_replicas,
+        s.max_cpu_request_per_pod, s.max_cpu_limit_per_pod,
+        s.max_memory_request_per_pod, s.max_memory_limit_per_pod,
+        s.max_replicas_per_app, s.max_total_deployments, s.max_total_pods,
+        s.max_total_cpu_requests, s.max_total_memory_requests,
+    )
 
     # Allowed source peers
     allowed_peers = [p.strip() for p in s.allowed_source_peers.split(",") if p.strip()]
     if allowed_peers and source_peer and source_peer not in allowed_peers:
         return f"Peer '{source_peer}' is not permitted to submit workloads to this cluster"
-
-    # Require resource limits
-    if s.require_resource_limits and res.is_empty():
-        return "This cluster requires resources.requests to be specified in the spec"
 
     # Image policy
     if spec.image:
@@ -94,27 +119,27 @@ def _check_resource_quota(spec: RemoteAppSpec, source_peer: str = "") -> str | N
             return img_err
 
     # Per-pod CPU
-    if s.max_cpu_request_per_pod and req_cpu_req:
+    if s.max_cpu_request_per_pod:
         limit = _parse_quantity(s.max_cpu_request_per_pod)
         if req_cpu_req > limit:
-            return (f"CPU request {res.requests['cpu']} exceeds per-pod limit "
+            return (f"CPU request {res.requests.get('cpu', '0')} exceeds per-pod limit "
                     f"of {s.max_cpu_request_per_pod}")
-    if s.max_cpu_limit_per_pod and req_cpu_lim:
+    if s.max_cpu_limit_per_pod:
         limit = _parse_quantity(s.max_cpu_limit_per_pod)
         if req_cpu_lim > limit:
-            return (f"CPU limit {res.limits['cpu']} exceeds per-pod limit "
+            return (f"CPU limit {res.limits.get('cpu', '0')} exceeds per-pod limit "
                     f"of {s.max_cpu_limit_per_pod}")
 
     # Per-pod memory
-    if s.max_memory_request_per_pod and req_mem_req:
+    if s.max_memory_request_per_pod:
         limit = _parse_quantity(s.max_memory_request_per_pod)
         if req_mem_req > limit:
-            return (f"Memory request {res.requests['memory']} exceeds per-pod limit "
+            return (f"Memory request {res.requests.get('memory', '0')} exceeds per-pod limit "
                     f"of {s.max_memory_request_per_pod}")
-    if s.max_memory_limit_per_pod and req_mem_lim:
+    if s.max_memory_limit_per_pod:
         limit = _parse_quantity(s.max_memory_limit_per_pod)
         if req_mem_lim > limit:
-            return (f"Memory limit {res.limits['memory']} exceeds per-pod limit "
+            return (f"Memory limit {res.limits.get('memory', '0')} exceeds per-pod limit "
                     f"of {s.max_memory_limit_per_pod}")
 
     # Per-app replicas
@@ -136,20 +161,20 @@ def _check_resource_quota(spec: RemoteAppSpec, source_peer: str = "") -> str | N
                     f"{s.max_total_pods - used_pods} available "
                     f"(limit {s.max_total_pods} total pods)")
 
-    if s.max_total_cpu_requests and req_cpu_req:
+    if s.max_total_cpu_requests:
         max_total = _parse_quantity(s.max_total_cpu_requests)
         used = sum(_parse_quantity(a.spec.resources.requests.get("cpu", ""))
                    for a in active_apps)
         if used + req_cpu_req > max_total:
-            return (f"Insufficient CPU capacity: request {res.requests.get('cpu','?')} "
+            return (f"Insufficient CPU capacity: request {res.requests.get('cpu', '0')} "
                     f"would exceed cluster total of {s.max_total_cpu_requests}")
 
-    if s.max_total_memory_requests and req_mem_req:
+    if s.max_total_memory_requests:
         max_total = _parse_quantity(s.max_total_memory_requests)
         used = sum(_parse_quantity(a.spec.resources.requests.get("memory", ""))
                    for a in active_apps)
         if used + req_mem_req > max_total:
-            return (f"Insufficient memory: request {res.requests.get('memory','?')} "
+            return (f"Insufficient memory: request {res.requests.get('memory', '0')} "
                     f"would exceed cluster total of {s.max_total_memory_requests}")
 
     return None
@@ -248,11 +273,13 @@ def list_pending_approval():
 def approve_remoteapp(app_id):
     if app_id not in state.pending_approval:
         return jsonify({"error": "not found"}), 404
-    entry = state.pending_approval.pop(app_id)
+    entry = state.pending_approval[app_id]
+    parsed_spec = RemoteAppSpec.from_dict(entry["spec"])
+    state.pending_approval.pop(app_id)
     source = state.peers.get(entry["source_peer"])
     ra = RemoteApp(
         name=entry["name"],
-        spec=RemoteAppSpec.from_dict(entry["spec"]),
+        spec=parsed_spec,
         source_peer=entry["source_peer"],
         id=app_id,
     )

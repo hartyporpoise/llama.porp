@@ -1218,23 +1218,13 @@
                 <span class="toggle-slider"></span>
               </label>
             </div>
-            <div class="toggle-row">
+            <div class="toggle-row" style="border-bottom:none;">
               <div class="toggle-info">
                 <div class="toggle-label">Require manual approval</div>
                 <div class="toggle-desc">Queue inbound apps for approval before they are executed</div>
               </div>
               <label class="toggle">
                 <input type="checkbox" id="setting-require-approval" onchange="saveSetting('require_remoteapp_approval', this.checked)">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="toggle-row" style="border-bottom:none;">
-              <div class="toggle-info">
-                <div class="toggle-label">Require resource limits</div>
-                <div class="toggle-desc">Reject apps that do not specify resources.requests</div>
-              </div>
-              <label class="toggle">
-                <input type="checkbox" id="setting-require-limits" onchange="saveSetting('require_resource_limits', this.checked)">
                 <span class="toggle-slider"></span>
               </label>
             </div>
@@ -1297,7 +1287,28 @@
               Enforced on <strong style="color:var(--text);">inbound</strong> workloads.
               CPU/memory values are k8s quantity strings, e.g. <code>500m</code>, <code>1</code>, <code>256Mi</code>, <code>2Gi</code>. Leave blank for unlimited.
             </p>
-            <div class="section-label">Per-pod limits</div>
+            <div class="section-label">Requirements</div>
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <div class="toggle-label">Require resource requests</div>
+                <div class="toggle-desc">Reject apps that do not specify resources.requests.cpu and resources.requests.memory</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" id="quota-require-requests" onchange="saveQuotas()">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row" style="border-bottom:none;">
+              <div class="toggle-info">
+                <div class="toggle-label">Require resource limits</div>
+                <div class="toggle-desc">Reject apps that do not specify resources.limits.cpu and resources.limits.memory</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" id="quota-require-limits" onchange="saveQuotas()">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="section-label" style="margin-top:1rem;">Per-pod limits</div>
             <div class="quota-grid" style="margin-bottom:1rem;">
               <div class="form-group">
                 <label class="form-label">Max CPU request per pod</label>
@@ -1752,86 +1763,123 @@ function copyText(elemId, btn) {
 // ════════════════════════════════════════════════════════════
 
 function parseSimpleYaml(text) {
-  var result = {};
-  var lines = text.split('\n');
-  var i = 0;
-  while (i < lines.length) {
-    var line = lines[i];
-    var trimmed = line.trim();
-    if (!trimmed || trimmed.charAt(0) === '#') { i++; continue; }
-    var idx = trimmed.indexOf(':');
-    if (idx === -1) { i++; continue; }
-    var key = trimmed.slice(0, idx).trim();
-    var val = trimmed.slice(idx + 1).trim();
-    // Detect a list value (next lines are indented "- ...")
-    if (!val) {
-      var listItems = [];
-      i++;
-      while (i < lines.length) {
-        var itemLine = lines[i];
-        var itemTrimmed = itemLine.trim();
-        if (!itemTrimmed || itemTrimmed.charAt(0) === '#') { i++; continue; }
-        // Stop if non-indented non-list line (top-level key)
-        var indent = itemLine.search(/\S/);
-        if (indent === 0) break;
-        if (itemTrimmed.charAt(0) === '-') {
-          // Parse inline map: "- port: 80\n    name: http" or "- port: 80, name: http"
-          var itemVal = itemTrimmed.slice(1).trim();
-          var itemObj = {};
-          // Check subsequent lines with greater indent for same map item
-          var baseIndent = indent;
-          var pairs = [itemVal];
-          i++;
+  // Parse lines at a given minimum indent level into an object.
+  // Returns {obj, nextIndex}.
+  function parseBlock(lines, startIdx, minIndent) {
+    var obj = {};
+    var i = startIdx;
+    while (i < lines.length) {
+      var line = lines[i];
+      var trimmed = line.trim();
+      if (!trimmed || trimmed.charAt(0) === '#') { i++; continue; }
+      var indent = line.search(/\S/);
+      if (indent < minIndent) break; // back to parent
+      var idx = trimmed.indexOf(':');
+      if (idx === -1) { i++; continue; }
+      var key = trimmed.slice(0, idx).trim();
+      var val = trimmed.slice(idx + 1).trim();
+      if (val) {
+        // Scalar value on same line
+        if (/^\d+$/.test(val)) val = parseInt(val, 10);
+        else if (val === 'true') val = true;
+        else if (val === 'false') val = false;
+        obj[key] = val;
+        i++;
+      } else {
+        // No inline value — peek at next non-blank line to decide: list or nested object
+        i++;
+        var j = i;
+        while (j < lines.length && !lines[j].trim()) j++;
+        if (j >= lines.length) { obj[key] = {}; continue; }
+        var nextTrimmed = lines[j].trim();
+        var nextIndent  = lines[j].search(/\S/);
+        if (nextIndent <= indent) { obj[key] = {}; continue; }
+        if (nextTrimmed.charAt(0) === '-') {
+          // List
+          var listItems = [];
           while (i < lines.length) {
-            var nextLine = lines[i];
-            var nextTrimmed = nextLine.trim();
-            if (!nextTrimmed) { i++; continue; }
-            var nextIndent = nextLine.search(/\S/);
-            if (nextIndent <= baseIndent) break;
-            pairs.push(nextTrimmed);
-            i++;
+            var itemLine = lines[i];
+            var itemTrimmed = itemLine.trim();
+            if (!itemTrimmed || itemTrimmed.charAt(0) === '#') { i++; continue; }
+            var itemIndent = itemLine.search(/\S/);
+            if (itemIndent <= indent) break;
+            if (itemTrimmed.charAt(0) === '-') {
+              var itemVal = itemTrimmed.slice(1).trim();
+              var itemObj = {};
+              var baseIndent = itemIndent;
+              var pairs = itemVal ? [itemVal] : [];
+              i++;
+              while (i < lines.length) {
+                var contLine = lines[i];
+                var contTrimmed = contLine.trim();
+                if (!contTrimmed) { i++; continue; }
+                var contIndent = contLine.search(/\S/);
+                if (contIndent <= baseIndent) break;
+                pairs.push(contTrimmed);
+                i++;
+              }
+              pairs.forEach(function(pair) {
+                var pi = pair.indexOf(':');
+                if (pi === -1) return;
+                var pk = pair.slice(0, pi).trim();
+                var pv = pair.slice(pi + 1).trim();
+                if (/^\d+$/.test(pv)) pv = parseInt(pv, 10);
+                else if (pv === 'true') pv = true;
+                else if (pv === 'false') pv = false;
+                itemObj[pk] = pv;
+              });
+              listItems.push(itemObj);
+            } else {
+              i++;
+            }
           }
-          pairs.forEach(function(pair) {
-            if (!pair) return;
-            var pi = pair.indexOf(':');
-            if (pi === -1) return;
-            var pk = pair.slice(0, pi).trim();
-            var pv = pair.slice(pi + 1).trim();
-            if (/^\d+$/.test(pv)) pv = parseInt(pv, 10);
-            itemObj[pk] = pv;
-          });
-          listItems.push(itemObj);
+          obj[key] = listItems;
         } else {
-          i++;
+          // Nested object — recurse
+          var sub = parseBlock(lines, i, nextIndent);
+          obj[key] = sub.obj;
+          i = sub.nextIdx;
         }
       }
-      result[key] = listItems;
-      continue;
     }
-    if (/^\d+$/.test(val)) val = parseInt(val, 10);
-    else if (val === 'true') val = true;
-    else if (val === 'false') val = false;
-    result[key] = val;
-    i++;
+    return { obj: obj, nextIdx: i };
   }
-  return result;
+
+  var lines = text.split('\n');
+  return parseBlock(lines, 0, 0).obj;
 }
 
-function objToYaml(obj) {
-  if (!obj || typeof obj !== 'object') return String(obj || '');
-  return Object.keys(obj).map(function(k) {
+function objToYaml(obj, indent) {
+  indent = indent || '';
+  if (obj === null || obj === undefined) return 'null';
+  if (typeof obj !== 'object') return String(obj);
+  if (Array.isArray(obj)) {
+    if (!obj.length) return '[]';
+    return obj.map(function(item) {
+      if (typeof item === 'object' && item !== null) {
+        var keys = Object.keys(item);
+        if (!keys.length) return indent + '- {}';
+        var first = keys[0];
+        var rest  = keys.slice(1);
+        var line  = indent + '- ' + first + ': ' + objToYaml(item[first], indent + '  ');
+        rest.forEach(function(k) { line += '\n' + indent + '  ' + k + ': ' + objToYaml(item[k], indent + '  '); });
+        return line;
+      }
+      return indent + '- ' + item;
+    }).join('\n');
+  }
+  var keys = Object.keys(obj);
+  return keys.map(function(k) {
     var v = obj[k];
-    if (Array.isArray(v)) {
-      if (!v.length) return k + ': []';
-      return k + ':\n' + v.map(function(item) {
-        if (typeof item === 'object' && item !== null) {
-          var pairs = Object.keys(item).map(function(ik) { return '    ' + ik + ': ' + item[ik]; });
-          return '  - ' + pairs[0].trim() + (pairs.length > 1 ? '\n' + pairs.slice(1).join('\n') : '');
-        }
-        return '  - ' + item;
-      }).join('\n');
+    if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+      var inner = objToYaml(v, indent + '  ');
+      return indent + k + ':\n' + inner;
     }
-    return k + ': ' + v;
+    if (Array.isArray(v)) {
+      if (!v.length) return indent + k + ': []';
+      return indent + k + ':\n' + objToYaml(v, indent + '  ');
+    }
+    return indent + k + ': ' + v;
   }).join('\n');
 }
 
@@ -2440,6 +2488,8 @@ document.getElementById('deploy-form').addEventListener('submit', async function
   var spec;
   try { spec = parseSimpleYaml(yaml); }
   catch(err) { toast('Invalid YAML: ' + err.message, 'error'); return; }
+  if (!spec.image) { toast('Spec must include an "image" field', 'error'); return; }
+
   var r = await fetch('/remoteapp', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2513,7 +2563,6 @@ async function loadSettings() {
     // Access control toggles
     document.getElementById('setting-inbound-apps').checked    = !!s.allow_inbound_remoteapps;
     document.getElementById('setting-require-approval').checked = !!s.require_remoteapp_approval;
-    document.getElementById('setting-require-limits').checked   = !!s.require_resource_limits;
     document.getElementById('setting-inbound-tunnels').checked  = !!s.allow_inbound_tunnels;
     document.getElementById('tunnel-allowlist-section').classList.toggle('section-disabled', !s.allow_inbound_tunnels);
     // Access control text fields
@@ -2524,6 +2573,8 @@ async function loadSettings() {
     window._loadedTunnelPeers = s.allowed_tunnel_peers || '';
     refresh(); // re-render checklist with loaded peer allowlist
     // Quotas
+    document.getElementById('quota-require-requests').checked = !!s.require_resource_requests;
+    document.getElementById('quota-require-limits').checked   = !!s.require_resource_limits;
     document.getElementById('quota-cpu-req-pod').value   = s.max_cpu_request_per_pod    || '';
     document.getElementById('quota-cpu-lim-pod').value   = s.max_cpu_limit_per_pod      || '';
     document.getElementById('quota-mem-req-pod').value   = s.max_memory_request_per_pod || '';
@@ -2745,7 +2796,6 @@ async function saveAccessControl() {
   var body = {
     allow_inbound_remoteapps:    document.getElementById('setting-inbound-apps').checked,
     require_remoteapp_approval:  document.getElementById('setting-require-approval').checked,
-    require_resource_limits:     document.getElementById('setting-require-limits').checked,
     allowed_images:              document.getElementById('policy-allowed-images').value.trim(),
     blocked_images:              document.getElementById('policy-blocked-images').value.trim(),
     allowed_source_peers:        document.getElementById('policy-allowed-peers').value.trim(),
@@ -2760,6 +2810,8 @@ async function saveAccessControl() {
 
 async function saveQuotas() {
   var body = {
+    require_resource_requests: document.getElementById('quota-require-requests').checked,
+    require_resource_limits:   document.getElementById('quota-require-limits').checked,
     max_cpu_request_per_pod:    document.getElementById('quota-cpu-req-pod').value.trim(),
     max_cpu_limit_per_pod:      document.getElementById('quota-cpu-lim-pod').value.trim(),
     max_memory_request_per_pod: document.getElementById('quota-mem-req-pod').value.trim(),
@@ -2939,16 +2991,40 @@ function renderAppDetail(d) {
     portsHtml = '<div class="detail-row"><span class="label">Port</span><span>' + legacyPort + '</span></div>';
   }
 
+  var res = spec.resources || {};
+  var reqs = res.requests || {};
+  var lims = res.limits   || {};
   html += '<div class="detail-block"><h4>Spec</h4>'
-    + '<div class="detail-row"><span class="label">Image</span><span class="mono">' + (spec.image||'—') + '</span></div>'
-    + '<div class="detail-row"><span class="label">Replicas</span><span>' + (spec.replicas||1) + '</span></div>'
-    + (spec.resources && (spec.resources.requests || spec.resources.limits) ? (
-        '<div class="detail-row"><span class="label">CPU req / lim</span><span class="mono">'
-          + ((spec.resources.requests||{}).cpu||'—') + ' / ' + ((spec.resources.limits||{}).cpu||'—') + '</span></div>'
-        + '<div class="detail-row"><span class="label">Mem req / lim</span><span class="mono">'
-          + ((spec.resources.requests||{}).memory||'—') + ' / ' + ((spec.resources.limits||{}).memory||'—') + '</span></div>'
-      ) : '')
+    + '<div class="detail-row"><span class="label">Image</span><span class="mono">' + _esc(spec.image || 'nginx:latest') + '</span></div>'
+    + '<div class="detail-row"><span class="label">Replicas</span><span>' + (spec.replicas || 1) + '</span></div>'
+    + (reqs.cpu || lims.cpu
+        ? '<div class="detail-row"><span class="label">CPU req / lim</span><span class="mono">' + _esc((reqs.cpu || '—') + ' / ' + (lims.cpu || '—')) + '</span></div>'
+        : '')
+    + (reqs.memory || lims.memory
+        ? '<div class="detail-row"><span class="label">Mem req / lim</span><span class="mono">' + _esc((reqs.memory || '—') + ' / ' + (lims.memory || '—')) + '</span></div>'
+        : '')
     + portsHtml
+    + (spec.imagePullPolicy && spec.imagePullPolicy !== 'IfNotPresent'
+        ? '<div class="detail-row"><span class="label">Pull policy</span><span class="mono">' + _esc(spec.imagePullPolicy) + '</span></div>'
+        : '')
+    + (Array.isArray(spec.imagePullSecrets) && spec.imagePullSecrets.length
+        ? '<div class="detail-row"><span class="label">Pull secrets</span><span class="mono">' + _esc(spec.imagePullSecrets.join(', ')) + '</span></div>'
+        : '')
+    + (Array.isArray(spec.command) && spec.command.length
+        ? '<div class="detail-row"><span class="label">Command</span><span class="mono">' + _esc(JSON.stringify(spec.command)) + '</span></div>'
+        : '')
+    + (Array.isArray(spec.args) && spec.args.length
+        ? '<div class="detail-row"><span class="label">Args</span><span class="mono">' + _esc(JSON.stringify(spec.args)) + '</span></div>'
+        : '')
+    + (Array.isArray(spec.env) && spec.env.length
+        ? '<div class="detail-row"><span class="label">Env vars</span><span>' + spec.env.length + ' variable' + (spec.env.length !== 1 ? 's' : '') + '</span></div>'
+        : '')
+    + (spec.readinessProbe
+        ? '<div class="detail-row"><span class="label">Readiness probe</span><span class="mono">' + _esc(spec.readinessProbe.httpGet ? 'httpGet ' + (spec.readinessProbe.httpGet.path || '/') : 'exec') + '</span></div>'
+        : '')
+    + (spec.securityContext
+        ? '<div class="detail-row"><span class="label">Security ctx</span><span class="mono">' + _esc(Object.entries(spec.securityContext).map(function(e){return e[0]+':'+e[1];}).join(', ')) + '</span></div>'
+        : '')
     + '</div>';
   html += '</div>';
 

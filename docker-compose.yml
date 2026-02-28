@@ -33,7 +33,7 @@ services:
     entrypoint: ["sh", "-c", "apk add --quiet --no-cache docker-cli && sleep infinity"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./chart:/chart
+      - ./charts:/charts
     networks:
       - porpulsion-net
     depends_on:

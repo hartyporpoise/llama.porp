@@ -60,7 +60,6 @@ service:
 # Access control:
 #   allow_inbound_remoteapps: true        # accept workloads from peers
 #   require_remoteapp_approval: false     # queue for manual approval before running
-#   require_resource_limits: false        # reject apps without resources.requests
 #   allowed_images: ""                    # comma-sep prefixes; empty = allow all
 #   blocked_images: ""                    # comma-sep prefixes; always denied
 #   allowed_source_peers: ""             # comma-sep peer names; empty = all connected

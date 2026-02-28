@@ -43,25 +43,22 @@ def update_settings():
         state.settings.log_level = level
         _apply_log_level(level)
 
-    bool_fields = ("require_remoteapp_approval", "require_resource_limits")
+    bool_fields = ("require_remoteapp_approval", "require_resource_requests", "require_resource_limits")
     for fld in bool_fields:
         if fld in data:
             setattr(state.settings, fld, bool(data[fld]))
 
-    str_fields = ("allowed_images", "blocked_images", "allowed_source_peers", "allowed_tunnel_peers")
+    str_fields = (
+        "allowed_images", "blocked_images", "allowed_source_peers", "allowed_tunnel_peers",
+        "max_cpu_request_per_pod", "max_cpu_limit_per_pod",
+        "max_memory_request_per_pod", "max_memory_limit_per_pod",
+        "max_total_cpu_requests", "max_total_memory_requests",
+    )
     for fld in str_fields:
         if fld in data:
             setattr(state.settings, fld, str(data[fld]).strip())
 
-    float_fields = ("max_cpu_per_pod", "max_total_cpu")
-    int_fields   = ("max_memory_mb_per_pod", "max_replicas_per_app",
-                    "max_total_deployments", "max_total_pods", "max_total_memory_mb")
-    for fld in float_fields:
-        if fld in data:
-            try:
-                setattr(state.settings, fld, max(0.0, float(data[fld])))
-            except (ValueError, TypeError):
-                return jsonify({"error": f"{fld} must be a number"}), 400
+    int_fields = ("max_replicas_per_app", "max_total_deployments", "max_total_pods")
     for fld in int_fields:
         if fld in data:
             try:

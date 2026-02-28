@@ -343,11 +343,14 @@ class AgentSettings:
       allowed_images             — comma-separated image prefixes; empty = allow all
       blocked_images             — comma-separated image prefixes always rejected
       allowed_source_peers       — comma-separated peer names that may submit; empty = all connected
-      require_resource_limits    — reject apps that omit resources.requests
 
     Resource quotas (enforced on inbound RemoteApp submissions).
     All cpu/memory values are k8s quantity strings, e.g. "500m", "1", "256Mi", "2Gi".
     Empty string = unlimited.
+
+      Presence requirements (checked before numeric limits):
+        require_resource_requests — reject apps that don't specify resources.requests.cpu/memory
+        require_resource_limits   — reject apps that don't specify resources.limits.cpu/memory
 
       Per-pod:
         max_cpu_request_per_pod    — max cpu request per pod
@@ -368,7 +371,6 @@ class AgentSettings:
     allowed_images: str = ""            # comma-separated prefixes; empty = allow all
     blocked_images: str = ""            # comma-separated prefixes; always denied
     allowed_source_peers: str = ""      # comma-separated peer names; empty = all connected
-    require_resource_limits: bool = False
 
     # Tunnel control
     allow_inbound_tunnels: bool = True
@@ -377,6 +379,10 @@ class AgentSettings:
 
     # Diagnostics
     log_level: str = "INFO"
+
+    # Resource presence requirements
+    require_resource_requests: bool = False
+    require_resource_limits: bool = False
 
     # Per-pod resource quotas (k8s quantity strings; "" = unlimited)
     max_cpu_request_per_pod: str = ""
@@ -393,12 +399,13 @@ class AgentSettings:
 
     def to_dict(self):
         return {
+            "require_resource_requests": self.require_resource_requests,
+            "require_resource_limits": self.require_resource_limits,
             "allow_inbound_remoteapps": self.allow_inbound_remoteapps,
             "require_remoteapp_approval": self.require_remoteapp_approval,
             "allowed_images": self.allowed_images,
             "blocked_images": self.blocked_images,
             "allowed_source_peers": self.allowed_source_peers,
-            "require_resource_limits": self.require_resource_limits,
             "allow_inbound_tunnels": self.allow_inbound_tunnels,
             "tunnel_approval_mode": self.tunnel_approval_mode,
             "allowed_tunnel_peers": self.allowed_tunnel_peers,
