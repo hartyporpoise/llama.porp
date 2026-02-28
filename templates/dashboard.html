@@ -277,7 +277,7 @@
       text-transform: none;
       letter-spacing: 0;
       line-height: 1.45;
-      white-space: pre-line;
+      white-space: normal;
       width: max-content;
       max-width: 220px;
       pointer-events: none;
@@ -2295,8 +2295,8 @@ function renderOverviewPeers(peers) {
     var encrypted = (p.url || '').startsWith('https://');
     var chanBadge = wsConn
       ? (encrypted
-          ? '<span class="badge badge-mtls" data-tooltip="Traffic encrypted via TLS (wss://).\nPeer identity verified by CA fingerprint."><span class="badge-dot"></span>live</span>'
-          : '<span class="badge badge-warn" data-tooltip="Channel is unencrypted (ws://).\nSet selfUrl to https:// to enable\nTLS-encrypted wss:// connections."><span class="badge-dot"></span>live</span>')
+          ? '<span class="badge badge-mtls" data-tooltip="Traffic encrypted via TLS (wss://). Peer identity verified by CA fingerprint."><span class="badge-dot"></span>live</span>'
+          : '<span class="badge badge-warn" data-tooltip="Channel is unencrypted (ws://). Set selfUrl to https:// to enable TLS-encrypted wss:// connections."><span class="badge-dot"></span>live</span>')
       : '<span class="badge badge-failed">offline</span>';
     return '<tr>'
       + '<td><strong>' + _esc(p.name) + '</strong></td>'
