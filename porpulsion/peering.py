@@ -36,7 +36,7 @@ def initiate_peering(agent_name, self_url, peer_url, invite_token,
             try:
                 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
                 resp = requests.post(
-                    f"{peer_url}/agent/peer",
+                    f"{peer_url}/peer",
                     json={"name": agent_name, "url": self_url, "ca": ca_pem_str},
                     headers={"X-Invite-Token": invite_token},
                     verify=False,   # bootstrap-only: no CA to verify yet

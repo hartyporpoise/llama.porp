@@ -175,7 +175,6 @@ def handle_proxy_request(payload: dict) -> dict:
 def handle_peer_disconnect(payload: dict):
     """Peer is telling us it's disconnecting cleanly."""
     from porpulsion import state, tls
-    from porpulsion.routes.peers import _rebuild_mtls_server
     peer_name = payload.get("name", "")
     if peer_name and peer_name in state.peers:
         state.peers.pop(peer_name)
@@ -183,6 +182,5 @@ def handle_peer_disconnect(payload: dict):
         for ra in list(state.local_apps.values()):
             if ra.target_peer == peer_name:
                 ra.status = "Failed"
-        _rebuild_mtls_server()
         tls.save_peers(state.NAMESPACE, state.peers)
         log.info("Peer %s disconnected (via channel)", peer_name)

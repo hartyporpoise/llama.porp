@@ -17,19 +17,6 @@ log = logging.getLogger("porpulsion.routes.peers")
 bp = Blueprint("peers", __name__)
 
 
-def _peer_session(peer: Peer | None = None) -> _req.Session:
-    session = _req.Session()
-    session.cert = (state.AGENT_CERT_PATH, state.AGENT_KEY_PATH)
-    session.verify = tls.peer_verify_bundle(peer.name) if (peer and peer.ca_pem) else False
-    return session
-
-
-def _rebuild_mtls_server():
-    """Trigger an mTLS server rebuild via the callback set by agent.py."""
-    if state._rebuild_mtls_callback:
-        state._rebuild_mtls_callback()
-
-
 @bp.route("/status")
 def status():
     return jsonify({
@@ -96,7 +83,6 @@ def accept_peer():
             tls.write_temp_pem(peer_ca.encode(), f"peer-ca-{peer_name}")
             state.peers[peer_name] = Peer(name=peer_name, url=peer_url, ca_pem=peer_ca)
             state.pending_peers.pop(peer_url, None)
-            _rebuild_mtls_server()
             tls.save_peers(state.NAMESPACE, state.peers)
             log.info("Peering confirmed by %s — fully connected", peer_name)
             # We are the initiator — open outbound WS channel to the accepting peer
@@ -149,14 +135,11 @@ def accept_inbound(req_id):
 
     _urllib3.disable_warnings(_urllib3.exceptions.InsecureRequestWarning)
     session = _req.Session()
-    # Send our client cert so the confirmation reaches the initiator's mTLS
-    # listener whether they are directly exposed or behind a TLS terminator.
-    session.cert = (state.AGENT_CERT_PATH, state.AGENT_KEY_PATH)
     session.verify = False  # no CA pinned yet at this stage — bootstrap trust
 
     try:
         resp = session.post(
-            f"{peer_url}/agent/peer",
+            f"{peer_url}/peer",
             json={"name": state.AGENT_NAME, "url": state.SELF_URL,
                   "ca": state.AGENT_CA_PEM.decode()},
             timeout=5,
@@ -167,7 +150,6 @@ def accept_inbound(req_id):
             tls.write_temp_pem(their_ca.encode() if isinstance(their_ca, str) else their_ca,
                                f"peer-ca-{peer_name}")
             state.peers[peer_name] = Peer(name=peer_name, url=peer_url, ca_pem=their_ca)
-            _rebuild_mtls_server()
             tls.save_peers(state.NAMESPACE, state.peers)
             log.info("Accepted and confirmed peering with %s", peer_name)
             # We are the acceptor — the initiator will open the WS channel to us,
@@ -215,7 +197,6 @@ def remove_peer(peer_name):
             ra.status = "Failed"
             log.info("Marked app %s as Failed (peer %s removed)", ra.id, peer_name)
 
-    _rebuild_mtls_server()
     tls.save_peers(state.NAMESPACE, state.peers)
     return jsonify({"ok": True, "removed": peer_name})
 
@@ -233,7 +214,6 @@ def peer_disconnect():
             if ra.target_peer == peer_name:
                 ra.status = "Failed"
                 log.info("Marked app %s as Failed (peer %s disconnected)", ra.id, peer_name)
-        _rebuild_mtls_server()
         tls.save_peers(state.NAMESPACE, state.peers)
     return jsonify({"ok": True, "removed": removed})
 

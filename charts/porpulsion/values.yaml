@@ -21,36 +21,29 @@ agent:
   #    during peer handshakes. Defaults to the hostname if unset.
   agentName: ""
 
-  # -- Externally reachable mTLS URL for this agent (e.g. https://agent.example.com:8443).
-  #    Peer agents use this address to initiate connections. Auto-detected from
-  #    the pod's default route if left empty, but explicit is recommended.
+  # -- Externally reachable URL for this agent (e.g. https://porpulsion.example.com).
+  #    Peer agents use this address for the initial peering handshake and to open
+  #    the persistent WebSocket channel (/agent/ws). Everything runs on port 8000.
+  #    Auto-detected from the pod's default route if left empty, but explicit is
+  #    recommended in production.
   selfUrl: ""
 
 # ── Service ────────────────────────────────────────────────────────────────────
-# A single Service exposes both the HTTP dashboard and the mTLS agent port.
-# Defaults to ClusterIP. For local development, set type=NodePort and supply
-# nodePort values (see Makefile for an example).
+# A single Service exposes the HTTP dashboard, peering API, and WebSocket channel
+# all on one port (8000). Defaults to ClusterIP; put an Ingress or LoadBalancer
+# on top in production. For local development, set type=NodePort.
 #
-# Production: leave type=ClusterIP and put an Ingress or LoadBalancer on top.
-#
-#   kubectl port-forward svc/porpulsion 8000:8000   # dashboard
-#   kubectl port-forward svc/porpulsion 8443:8443   # mTLS (TCP only)
+#   kubectl port-forward svc/porpulsion 8000:8000   # dashboard + WS + peering
 
 service:
   # -- Service type. ClusterIP for production; NodePort for local dev.
   type: ClusterIP
 
-  # -- Port the HTTP dashboard listens on inside the cluster.
-  uiPort: 8000
+  # -- Port the HTTP dashboard and WebSocket peer channel listen on.
+  port: 8000
 
-  # -- Port the mTLS agent listener binds to inside the cluster.
-  agentPort: 8443
-
-  # -- NodePort for the dashboard. Only used when type=NodePort.
+  # -- NodePort for the dashboard + WebSocket. Only used when type=NodePort.
   uiNodePort: ""
-
-  # -- NodePort for the mTLS agent. Only used when type=NodePort.
-  agentNodePort: ""
 
 # ── Agent runtime settings ──────────────────────────────────────────────────────
 # These settings are configured at runtime via the dashboard UI or the /settings

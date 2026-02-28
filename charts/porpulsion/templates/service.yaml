@@ -10,15 +10,10 @@ spec:
   selector:
     app: {{ include "porpulsion.fullname" . }}-agent
   ports:
-    - name: http
-      port: {{ .Values.service.uiPort }}
-      targetPort: {{ .Values.service.uiPort }}
+    # Dashboard UI and persistent WebSocket peer channel (/agent/ws)
+    - name: ui-ws
+      port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.port }}
       {{- if and (eq .Values.service.type "NodePort") .Values.service.uiNodePort }}
       nodePort: {{ .Values.service.uiNodePort }}
-      {{- end }}
-    - name: mtls
-      port: {{ .Values.service.agentPort }}
-      targetPort: {{ .Values.service.agentPort }}
-      {{- if and (eq .Values.service.type "NodePort") .Values.service.agentNodePort }}
-      nodePort: {{ .Values.service.agentNodePort }}
       {{- end }}

@@ -1,12 +1,10 @@
 import logging
-import uuid
 from datetime import datetime, timezone
 
 from flask import Blueprint, request, jsonify
 
 from porpulsion import state, tls
 from porpulsion.models import RemoteApp, RemoteAppSpec
-from porpulsion.peering import verify_peer
 from porpulsion.channel import get_channel
 from porpulsion.k8s.executor import (
     run_workload, delete_workload, scale_workload, get_deployment_status,
@@ -202,54 +200,6 @@ def create_remoteapp():
     return jsonify(ra.to_dict()), 201
 
 
-@bp.route("/remoteapp/receive", methods=["POST"])
-def receive_remoteapp():
-    if not verify_peer(request, state.peers):
-        return jsonify({"error": "unauthorized"}), 403
-    if not state.settings.allow_inbound_remoteapps:
-        return jsonify({
-            "error": "inbound workloads are disabled on this agent",
-            "inbound_disabled": True,
-        }), 403
-
-    data = request.json
-    spec = RemoteAppSpec.from_dict(data.get("spec", {}))
-    source_peer = data.get("source_peer", "unknown")
-    quota_err = _check_resource_quota(spec, source_peer=source_peer)
-    if quota_err:
-        log.warning("RemoteApp rejected by policy: %s", quota_err)
-        return jsonify({"error": quota_err, "quota_violation": True}), 429
-
-    app_id = data.get("id") or uuid.uuid4().hex[:8]
-    source = state.peers.get(source_peer)
-    callback_url = source_peer  # channel key — not a URL, routed via WS channel
-
-    if state.settings.require_remoteapp_approval:
-        entry = {
-            "id": app_id,
-            "name": data["name"],
-            "spec": spec.to_dict(),
-            "source_peer": source_peer,
-            "callback_url": callback_url,
-            "since": datetime.now(timezone.utc).isoformat(),
-        }
-        state.pending_approval[app_id] = entry
-        log.info("App %s (%s) queued for approval from %s", data["name"], app_id, source_peer)
-        tls.save_state_configmap(state.NAMESPACE, state.local_apps, state.settings,
-                                 state.pending_approval)
-        return jsonify({"id": app_id, "status": "pending_approval"})
-
-    ra = RemoteApp(
-        name=data["name"],
-        spec=spec,
-        source_peer=source_peer,
-        id=app_id,
-    )
-    state.remote_apps[ra.id] = ra
-    log.info("Received app %s (%s) from %s", ra.name, ra.id, ra.source_peer)
-    run_workload(ra, callback_url, peer=source)
-    return jsonify(ra.to_dict())
-
 
 @bp.route("/remoteapp/pending-approval")
 def list_pending_approval():
@@ -306,21 +256,6 @@ def list_remoteapps():
     })
 
 
-@bp.route("/remoteapp/<app_id>/status", methods=["POST"])
-def update_status(app_id):
-    if not verify_peer(request, state.peers):
-        return jsonify({"error": "unauthorized"}), 403
-
-    data = request.json
-    if app_id in state.local_apps:
-        state.local_apps[app_id].status = data.get("status", state.local_apps[app_id].status)
-        state.local_apps[app_id].updated_at = data.get("updated_at",
-                                                        state.local_apps[app_id].updated_at)
-        log.info("Status update for %s: %s", app_id, state.local_apps[app_id].status)
-        tls.save_state_configmap(state.NAMESPACE, state.local_apps, state.settings)
-        return jsonify({"ok": True})
-    return jsonify({"error": "app not found"}), 404
-
 
 @bp.route("/remoteapp/<app_id>", methods=["DELETE"])
 def delete_remoteapp(app_id):
@@ -353,21 +288,6 @@ def delete_remoteapp(app_id):
 
     return jsonify({"error": "app not found"}), 404
 
-
-@bp.route("/remoteapp/<app_id>/remote", methods=["DELETE"])
-def delete_remoteapp_remote(app_id):
-    if not verify_peer(request, state.peers):
-        return jsonify({"error": "unauthorized"}), 403
-
-    if app_id in state.remote_apps:
-        ra = state.remote_apps[app_id]
-        delete_workload(ra)
-        ra.status = "Deleted"
-        del state.remote_apps[app_id]
-        log.info("Deleted remote app %s on peer request", app_id)
-        return jsonify({"ok": True})
-
-    return jsonify({"error": "app not found"}), 404
 
 
 @bp.route("/remoteapp/<app_id>/scale", methods=["POST"])
@@ -405,26 +325,6 @@ def scale_remoteapp(app_id):
     return jsonify({"error": "app not found"}), 404
 
 
-@bp.route("/remoteapp/<app_id>/scale/remote", methods=["POST"])
-def scale_remoteapp_remote(app_id):
-    if not verify_peer(request, state.peers):
-        return jsonify({"error": "unauthorized"}), 403
-
-    data = request.json or {}
-    replicas = data.get("replicas")
-    if replicas is None:
-        return jsonify({"error": "replicas is required"}), 400
-    if app_id not in state.remote_apps:
-        return jsonify({"error": "app not found"}), 404
-
-    ra = state.remote_apps[app_id]
-    try:
-        scale_workload(ra, int(replicas))
-        ra.spec.replicas = int(replicas)
-        return jsonify({"ok": True, "replicas": int(replicas)})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 
 @bp.route("/remoteapp/<app_id>/detail")
 def remoteapp_detail(app_id):
@@ -446,15 +346,6 @@ def remoteapp_detail(app_id):
 
     return jsonify({"error": "app not found"}), 404
 
-
-@bp.route("/remoteapp/<app_id>/detail/remote")
-def remoteapp_detail_remote(app_id):
-    if not verify_peer(request, state.peers):
-        return jsonify({"error": "unauthorized"}), 403
-    if app_id not in state.remote_apps:
-        return jsonify({"error": "app not found"}), 404
-    ra = state.remote_apps[app_id]
-    return jsonify(get_deployment_status(ra))
 
 
 @bp.route("/remoteapp/<app_id>/spec", methods=["PUT"])
@@ -482,25 +373,3 @@ def update_remoteapp_spec(app_id):
     return jsonify(ra.to_dict())
 
 
-@bp.route("/remoteapp/<app_id>/spec/remote", methods=["PUT"])
-def update_remoteapp_spec_remote(app_id):
-    if not verify_peer(request, state.peers):
-        return jsonify({"error": "unauthorized"}), 403
-
-    data = request.json or {}
-    new_spec = data.get("spec")
-    if new_spec is None:
-        return jsonify({"error": "spec is required"}), 400
-    if app_id not in state.remote_apps:
-        return jsonify({"error": "app not found"}), 404
-
-    ra = state.remote_apps[app_id]
-    parsed_spec = RemoteAppSpec.from_dict(new_spec)
-    quota_err = _check_resource_quota(parsed_spec, source_peer=ra.source_peer)
-    if quota_err:
-        return jsonify({"error": quota_err, "quota_violation": True}), 429
-
-    ra.spec = parsed_spec
-    source = state.peers.get(ra.source_peer)
-    run_workload(ra, ra.source_peer, peer=source)
-    return jsonify({"ok": True})

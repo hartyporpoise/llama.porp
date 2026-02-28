@@ -2,15 +2,13 @@
 TLS certificate generation and management for porpulsion agents.
 
 Each agent auto-generates a private CA on first boot, persisted to the
-porpulsion-credentials Kubernetes Secret. A leaf cert signed by that CA
-is used for the mTLS listener. During peering the CA cert (not the leaf)
-is exchanged — peers store each other's CA and use it as the trust anchor
-for all subsequent mTLS connections. This gives full mutual authentication
-with no external dependencies and works on private networks.
+porpulsion-credentials Kubernetes Secret. During peering the CA cert is
+exchanged — peers store each other's CA and use it as the trust anchor
+for the WebSocket channel (authenticated by CA fingerprint). This gives
+full mutual authentication with no external dependencies.
 """
 import base64
 import os
-import ssl
 import datetime
 import ipaddress
 from cryptography import x509
@@ -120,88 +118,6 @@ def cert_fingerprint(cert_pem: str | bytes) -> str:
     return cert.fingerprint(hashes.SHA256()).hex()
 
 
-def make_server_ssl_context(cert_path: str, key_path: str,
-                             peer_ca_pems: list[bytes] | None = None) -> ssl.SSLContext:
-    """
-    Build an SSL context for the agent-to-agent HTTPS listener (port 8443).
-
-    Uses CERT_REQUIRED — every connecting peer must present a client cert
-    signed by a CA we trust. peer_ca_pems is the list of CA certs from all
-    currently connected peers; the context is rebuilt whenever a new peer
-    is added (see rebuild_mtls_server in agent.py).
-
-    With no peer CAs yet (first boot before any peering), CERT_NONE is used
-    temporarily so the peering bootstrap requests can reach us.
-    """
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    # Require TLS 1.2 minimum; prefer TLS 1.3
-    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-    # Restrict to ECDHE+AESGCM and CHACHA20 — forward secrecy, authenticated encryption
-    ctx.set_ciphers(
-        "ECDHE-ECDSA-AES256-GCM-SHA384:"
-        "ECDHE-RSA-AES256-GCM-SHA384:"
-        "ECDHE-ECDSA-AES128-GCM-SHA256:"
-        "ECDHE-RSA-AES128-GCM-SHA256:"
-        "ECDHE-ECDSA-CHACHA20-POLY1305:"
-        "ECDHE-RSA-CHACHA20-POLY1305:"
-        "TLS_AES_256_GCM_SHA384:"      # TLS 1.3
-        "TLS_AES_128_GCM_SHA256:"      # TLS 1.3
-        "TLS_CHACHA20_POLY1305_SHA256"  # TLS 1.3
-    )
-    ctx.load_cert_chain(cert_path, key_path)
-    if peer_ca_pems:
-        ctx.verify_mode = ssl.CERT_REQUIRED
-        # Write all peer CA certs into one bundle file and load it
-        bundle = b"".join(peer_ca_pems)
-        bundle_path = write_temp_pem(bundle, "peer-ca-bundle")
-        ctx.load_verify_locations(cafile=bundle_path)
-    else:
-        # No peers yet — accept unauthenticated connections for bootstrap
-        ctx.verify_mode = ssl.CERT_NONE
-    return ctx
-
-
-def peer_ca_path(peer_name: str) -> str:
-    """Return the /tmp path where a peer's CA cert is stored."""
-    return f"/tmp/porpulsion-peer-ca-{peer_name}.pem"
-
-
-def peer_verify_bundle(peer_name: str) -> str | bool:
-    """
-    Return a CA bundle path suitable for requests session.verify.
-
-    Concatenates the system CA bundle with the peer's self-signed CA so that
-    connections work whether the peer is behind a real TLS terminator (e.g.
-    nginx Ingress with a Let's Encrypt cert) or is serving its own mTLS cert
-    directly on a custom port.
-    """
-    import certifi
-    peer_ca = peer_ca_path(peer_name)
-    bundle_path = f"/tmp/porpulsion-verify-bundle-{peer_name}.pem"
-    try:
-        with open(certifi.where(), "rb") as f:
-            system_cas = f.read()
-        peer_ca_data = b""
-        try:
-            with open(peer_ca, "rb") as f:
-                peer_ca_data = f.read()
-        except FileNotFoundError:
-            pass
-        with open(bundle_path, "wb") as f:
-            f.write(system_cas)
-            if peer_ca_data:
-                f.write(b"\n")
-                f.write(peer_ca_data)
-        return bundle_path
-    except Exception:
-        # Fall back to peer CA only if certifi isn't available
-        return peer_ca if os.path.exists(peer_ca) else True
-
-
-# Module-level placeholders — set by agent.py at startup after generating certs.
-AGENT_CERT_PATH: str = ""
-AGENT_KEY_PATH: str = ""
-
 _CREDENTIALS_SECRET = "porpulsion-credentials"
 
 
@@ -259,106 +175,38 @@ def _save_credentials_secret(core_v1, namespace: str,
             raise
 
 
-def load_or_generate_cert(agent_name: str, namespace: str,
-                           self_ip: str = "") -> tuple[bytes, bytes, bytes, bytes]:
-    """
-    Load CA + leaf cert/key from the porpulsion-credentials Secret, or generate
-    them fresh if missing. Regenerates the leaf cert (but not the CA) if the
-    agent's IP has changed, preserving the CA fingerprint so existing peers
-    remain valid.
 
-    Returns (ca_cert_pem, ca_key_pem, leaf_cert_pem, leaf_key_pem) as bytes.
+def load_or_generate_ca(agent_name: str, namespace: str) -> tuple[bytes, bytes]:
+    """
+    Load the agent's CA cert + key from the porpulsion-credentials Secret, or
+    generate them fresh if absent.  Returns (ca_cert_pem, ca_key_pem) as bytes.
+
+    The CA cert is what peers exchange during peering and is used to authenticate
+    the persistent WebSocket channel. The private key never leaves this agent.
     """
     import logging
-    log = logging.getLogger("porpulsion.tls")
+    _log = logging.getLogger("porpulsion.tls")
     core_v1 = _k8s_core_v1()
 
     try:
         secret = core_v1.read_namespaced_secret(_CREDENTIALS_SECRET, namespace)
         d = secret.data or {}
-        if all(k in d for k in ("ca.crt", "ca.key", "tls.crt", "tls.key")):
+        if "ca.crt" in d and "ca.key" in d:
             ca_cert_pem = base64.b64decode(d["ca.crt"])
             ca_key_pem  = base64.b64decode(d["ca.key"])
-            stored_ip   = base64.b64decode(d["self-ip"]).decode() if "self-ip" in d else ""
-            if stored_ip == self_ip:
-                leaf_cert_pem = base64.b64decode(d["tls.crt"])
-                leaf_key_pem  = base64.b64decode(d["tls.key"])
-                log.info("Loaded existing CA + leaf cert from Secret (IP unchanged)")
-                return ca_cert_pem, ca_key_pem, leaf_cert_pem, leaf_key_pem
-            else:
-                # IP changed — reuse CA, regenerate only the leaf
-                log.info("IP changed (%s → %s) — regenerating leaf cert, preserving CA",
-                         stored_ip or "(none)", self_ip or "(none)")
-                leaf_cert_pem, leaf_key_pem = _generate_leaf(
-                    agent_name, self_ip, ca_cert_pem, ca_key_pem)
-                try:
-                    _save_credentials_secret(core_v1, namespace,
-                                             cert_pem=leaf_cert_pem, key_pem=leaf_key_pem,
-                                             self_ip=self_ip)
-                except Exception as exc:
-                    log.warning("Could not persist new leaf cert: %s", exc)
-                return ca_cert_pem, ca_key_pem, leaf_cert_pem, leaf_key_pem
+            _log.info("Loaded existing CA cert from Secret")
+            return ca_cert_pem, ca_key_pem
     except Exception:
-        pass  # Secret missing or incomplete — generate everything fresh
+        pass  # Secret missing — generate fresh
 
-    log.info("Generating new CA + leaf cert for %s", agent_name)
-    ca_cert_pem, ca_key_pem, leaf_cert_pem, leaf_key_pem = generate_ca_and_leaf_cert(
-        agent_name, self_ip=self_ip)
+    _log.info("Generating new CA for %s", agent_name)
+    ca_cert_pem, ca_key_pem, _, _ = generate_ca_and_leaf_cert(agent_name)
     try:
         _save_credentials_secret(core_v1, namespace,
-                                  ca_cert_pem=ca_cert_pem, ca_key_pem=ca_key_pem,
-                                  cert_pem=leaf_cert_pem, key_pem=leaf_key_pem,
-                                  self_ip=self_ip)
+                                  ca_cert_pem=ca_cert_pem, ca_key_pem=ca_key_pem)
     except Exception as exc:
-        log.warning("Could not persist certs to Secret: %s", exc)
-    return ca_cert_pem, ca_key_pem, leaf_cert_pem, leaf_key_pem
-
-
-def _generate_leaf(agent_name: str, self_ip: str,
-                   ca_cert_pem: bytes, ca_key_pem: bytes) -> tuple[bytes, bytes]:
-    """Generate a new leaf cert signed by the existing CA."""
-    from cryptography.x509 import load_pem_x509_certificate
-    from cryptography.hazmat.primitives.serialization import load_pem_private_key
-
-    ca_cert = load_pem_x509_certificate(ca_cert_pem)
-    ca_key_obj = load_pem_private_key(ca_key_pem, password=None)
-
-    leaf_key = ec.generate_private_key(ec.SECP256R1())  # ECDSA P-256
-    leaf_name = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, agent_name),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "porpulsion"),
-    ])
-    san_entries: list = [x509.DNSName(agent_name)]
-    if self_ip:
-        try:
-            san_entries.append(x509.IPAddress(ipaddress.ip_address(self_ip)))
-        except ValueError:
-            pass
-    leaf_cert = (
-        x509.CertificateBuilder()
-        .subject_name(leaf_name)
-        .issuer_name(ca_cert.subject)
-        .public_key(leaf_key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.datetime.now(datetime.timezone.utc))
-        .not_valid_after(
-            datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)
-        )
-        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
-        .add_extension(x509.SubjectAlternativeName(san_entries), critical=False)
-        .add_extension(x509.ExtendedKeyUsage([
-            ExtendedKeyUsageOID.SERVER_AUTH,
-            ExtendedKeyUsageOID.CLIENT_AUTH,
-        ]), critical=False)
-        .sign(ca_key_obj, hashes.SHA256())
-    )
-    cert_pem = leaf_cert.public_bytes(serialization.Encoding.PEM)
-    key_pem = leaf_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption(),
-    )
-    return cert_pem, key_pem
+        _log.warning("Could not persist CA to Secret: %s", exc)
+    return ca_cert_pem, ca_key_pem
 
 
 def load_or_generate_token(namespace: str) -> str:

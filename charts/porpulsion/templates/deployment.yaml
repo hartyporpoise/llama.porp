@@ -24,10 +24,8 @@ spec:
           image: {{ .Values.agent.image }}
           imagePullPolicy: {{ .Values.agent.pullPolicy }}
           ports:
-            - name: ui
-              containerPort: {{ .Values.service.uiPort }}
-            - name: agent
-              containerPort: {{ .Values.service.agentPort }}
+            - name: ui-ws
+              containerPort: {{ .Values.service.port }}
           env:
             - name: AGENT_NAME
               value: {{ .Values.agent.agentName | quote }}
@@ -38,12 +36,12 @@ spec:
           readinessProbe:
             httpGet:
               path: /status
-              port: {{ .Values.service.uiPort }}
+              port: {{ .Values.service.port }}
             initialDelaySeconds: 2
             periodSeconds: 5
           livenessProbe:
             httpGet:
               path: /status
-              port: {{ .Values.service.uiPort }}
+              port: {{ .Values.service.port }}
             initialDelaySeconds: 5
             periodSeconds: 10

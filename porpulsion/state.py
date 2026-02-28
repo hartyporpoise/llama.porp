@@ -15,8 +15,6 @@ AGENT_NAME: str = ""
 NAMESPACE:  str = "porpulsion"
 SELF_URL:   str = ""
 AGENT_CA_PEM: bytes = b""
-AGENT_CERT_PATH: str = ""
-AGENT_KEY_PATH:  str = ""
 
 # ── In-memory state ───────────────────────────────────────────
 peers:          dict[str, Peer]          = {}
@@ -31,6 +29,3 @@ invite_token: str = ""
 
 # peer_name -> PeerChannel (live WebSocket connection to that peer)
 peer_channels: "dict[str, PeerChannel]" = {}
-
-# Callback set by agent.py so route blueprints can trigger mTLS server rebuilds
-_rebuild_mtls_callback = None

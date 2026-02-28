@@ -13,19 +13,19 @@
 ```
 ┌──────────────────────┐                      ┌──────────────────────┐
 │  Cluster A           │                      │  Cluster B           │
-│  ┌────────────────┐  │  mTLS  ·  RemoteApp  │  ┌────────────────┐  │
+│  ┌────────────────┐  │  persistent WebSocket │  ┌────────────────┐  │
 │  │   porpulsion   │◄─┼──────────────────────┼─►│   porpulsion   │  │
-│  │  UI   :8000    │  │  status reflection   │  │  UI   :8000    │  │
-│  │  mTLS :8443    │  │  HTTP proxy tunnel   │  │  mTLS :8443    │  │
-│  └────────────────┘  │                      │  └────────────────┘  │
+│  │  :8000         │  │  RemoteApp deploy    │  │  :8000         │  │
+│  │  UI + WS + API │  │  status callbacks    │  │  UI + WS + API │  │
+│  └────────────────┘  │  HTTP proxy tunnel   │  └────────────────┘  │
 └──────────────────────┘                      └──────────────────────┘
 ```
 
 ## How it works
 
-Each cluster runs one porpulsion agent. Agents exchange self-signed CA certificates during a one-time peering handshake authenticated by a single-use invite token. After that, all inter-agent traffic uses mutual TLS — no shared secrets, no PKI infrastructure required.
+Each cluster runs one porpulsion agent. Agents exchange self-signed CA certificates during a one-time peering handshake, authenticated by a single-use invite token. Everything happens over plain HTTP/WebSocket on port 8000 — no separate mTLS port needed.
 
-Once peered, submit a **RemoteApp** spec from Cluster A. The agent forwards it to Cluster B, which creates a real Kubernetes Deployment. Status flows back automatically. An HTTP reverse proxy tunnels traffic to the remote pod over the same mTLS connection — no extra port exposure or ingress rules needed on the executing side.
+After peering, each agent opens a **persistent WebSocket channel** to its peer on port 8000. All subsequent inter-agent traffic — RemoteApp submissions, status callbacks, HTTP proxy tunnels — flows over this single long-lived connection. No new outbound connections are made per request. If the channel drops, both sides reconnect automatically with exponential backoff.
 
 State (peers, submitted apps, settings) is persisted to a Kubernetes Secret and ConfigMap so restarts are transparent.
 
@@ -59,8 +59,6 @@ make deploy
 |-----|-------------|
 | `http://localhost:8001` | Cluster A dashboard |
 | `http://localhost:8002` | Cluster B dashboard |
-| `https://localhost:8003` | Cluster A mTLS agent endpoint |
-| `https://localhost:8004` | Cluster B mTLS agent endpoint |
 
 ### Makefile targets
 
@@ -85,33 +83,16 @@ helm upgrade --install porpulsion oci://ghcr.io/hartyporpoise/porpulsion \
   --set agent.selfUrl=https://porpulsion.example.com
 ```
 
-Both services default to `ClusterIP`. Expose them with your own Ingress or LoadBalancer:
-
-- **Dashboard** (HTTP, port 8000) — standard nginx Ingress, any path. Set `agent.selfUrl` to this hostname — peers use it for the initial invite and the persistent WebSocket channel.
-- **mTLS agent** (TLS, port 8443) — optional direct TCP LoadBalancer; only needed if you want true end-to-end mTLS without nginx TLS termination
+The service defaults to `ClusterIP`. Expose it with your own Ingress or LoadBalancer. A single port (8000) handles everything: the dashboard, the peering API, and the persistent WebSocket channel.
 
 ```sh
 # Quick access without an Ingress
-kubectl port-forward svc/porpulsion 8000:8000 -n porpulsion   # dashboard
-kubectl port-forward svc/porpulsion 8443:8443 -n porpulsion   # mTLS agent
+kubectl port-forward svc/porpulsion 8000:8000 -n porpulsion   # dashboard + WS + peering
 ```
 
 ### nginx Ingress example
 
-Porpulsion works with a standard nginx Ingress on a single hostname. nginx terminates TLS,
-requests the peer's client certificate, and forwards it to the pod as a header. The agent
-verifies the certificate in software against its known peer CAs.
-
-The `configuration-snippet` annotation is required. Many nginx ingress deployments disable
-it by default for security reasons. Enable it in the ingress controller ConfigMap:
-
-```yaml
-# kubectl edit configmap ingress-nginx-controller -n ingress-nginx
-data:
-  allow-snippet-annotations: "true"
-```
-
-Then apply the Ingress:
+Porpulsion works with a standard nginx Ingress — no `configuration-snippet` or client-cert forwarding required. The only special requirement is an elevated proxy read timeout so nginx doesn't kill the long-lived WebSocket channel during idle periods (the default 60s will cause disconnects).
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -120,16 +101,10 @@ metadata:
   name: porpulsion
   namespace: porpulsion
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      # Request a client cert from connecting peers but don't require one —
-      # unauthenticated browser traffic (dashboard) must still get through.
-      # The agent verifies the cert in software against its peer CA list.
-      ssl_verify_client optional_no_ca;
-
-      # Forward the client cert to the pod as a URL-encoded PEM header.
-      # The agent reads this from the X-SSL-Client-Cert header.
-      proxy_set_header X-SSL-Client-Cert $ssl_client_escaped_cert;
+    # Keep the persistent WebSocket channel alive — must be longer than the
+    # agent's ping interval (20s). Set generously to survive quiet periods.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
 spec:
   ingressClassName: nginx
   tls:
@@ -140,27 +115,8 @@ spec:
     - host: porpulsion.example.com
       http:
         paths:
-          # WebSocket peer channel — must route to port 8000 (Flask), not 8443.
-          # nginx.ingress.kubernetes.io/proxy-read-timeout must be long enough
-          # to keep the persistent WS connection alive.
-          - path: /agent/ws
-            pathType: Exact
-            backend:
-              service:
-                name: porpulsion
-                port:
-                  number: 8000
-          # Peer-to-peer HTTP API calls — routes to port 8443 (mTLS listener).
-          - path: /agent(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: porpulsion
-                port:
-                  number: 8443
-          # Dashboard — plain HTTP, serves the UI and management API.
-          - path: /()(.*)
-            pathType: ImplementationSpecific
+          - path: /
+            pathType: Prefix
             backend:
               service:
                 name: porpulsion
@@ -170,29 +126,18 @@ spec:
 
 Set `agent.selfUrl` to `https://porpulsion.example.com` in your Helm values.
 
-> **Security note:** With `ssl_verify_client optional_no_ca`, nginx forwards whatever cert
-> the client presents without verifying the chain. The porpulsion agent performs the trust
-> check in software using the CA certs exchanged during peering. This is safe as long as
-> port 8443 is not directly exposed — only reachable via nginx.
-
-**Alternative — TCP LoadBalancer (true end-to-end mTLS, no snippet annotation needed):**
-Expose port 8443 via a separate `LoadBalancer` service and point `agent.selfUrl` directly
-at it (e.g. `https://agent.example.com:8443`). nginx is only used for the dashboard.
-
 ### Helm values
 
 | Value | Default | Description |
 |-------|---------|-------------|
 | `agent.agentName` | `""` | Human-readable cluster name shown in the dashboard |
-| `agent.selfUrl` | `""` | Externally reachable URL for this agent, used for peering and the persistent WebSocket channel. In production set to the nginx HTTPS hostname, e.g. `https://porpulsion.example.com`. Auto-detected if unset. |
+| `agent.selfUrl` | `""` | Externally reachable URL for this agent. Peers use it for the initial invite handshake and the persistent WebSocket channel. Set to the nginx HTTPS hostname, e.g. `https://porpulsion.example.com`. Auto-detected if unset. |
 | `agent.image` | `porpulsion-agent:latest` | Container image |
 | `agent.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `namespace` | `porpulsion` | Namespace for the agent and all RemoteApp workloads |
 | `service.type` | `ClusterIP` | Service type — use `NodePort` for local dev |
-| `service.uiPort` | `8000` | Dashboard port |
-| `service.agentPort` | `8443` | mTLS agent port |
-| `service.uiNodePort` | `""` | NodePort for dashboard (only when `type=NodePort`) |
-| `service.agentNodePort` | `""` | NodePort for mTLS agent (only when `type=NodePort`) |
+| `service.port` | `8000` | Dashboard + WebSocket + peering port |
+| `service.uiNodePort` | `""` | NodePort (only when `type=NodePort`) |
 
 ---
 
@@ -236,7 +181,7 @@ Enforced on **inbound** workloads at receive time. All CPU/memory values are k8s
 
 Open the dashboard on Cluster A and navigate to **Peers**. Copy the invite token and CA fingerprint. On Cluster B, paste them into the **Connect a New Peer** form. Both sides will show the peer as connected within a few seconds.
 
-Peers persist across restarts — the CA cert is stored in the `porpulsion-credentials` Secret.
+Peers persist across restarts — the CA cert is stored in the `porpulsion-credentials` Secret. The WebSocket channel reconnects automatically on restart with exponential backoff starting at 2s.
 
 ### 2 · Deploy a RemoteApp
 
@@ -257,11 +202,11 @@ resources:
     memory: 256Mi
 ```
 
-The spec is forwarded to the peer cluster, which creates a Kubernetes Deployment in the `porpulsion` namespace. Status reflects back automatically (`Pending` → `Running`).
+The spec is forwarded to the peer cluster over the WebSocket channel, which creates a Kubernetes Deployment in the `porpulsion` namespace. Status reflects back automatically (`Pending` → `Running`).
 
 ### 3 · Access via HTTP proxy
 
-Navigate to the **Proxy** page to see all submitted apps with per-port proxy URLs. Click a URL to open the app through the mTLS tunnel — no additional ports need to be exposed on the executing cluster.
+Navigate to the **Proxy** page to see all submitted apps with per-port proxy URLs. Click a URL to open the app through the WebSocket tunnel — no additional ports need to be exposed on the executing cluster.
 
 Proxy URL format: `http://<dashboard>/remoteapp/<id>/proxy/<port>/`
 
@@ -290,24 +235,27 @@ Proxy URL format: `http://<dashboard>/remoteapp/<id>/proxy/<port>/`
 ```
 porpulsion/
 ├── porpulsion/
-│   ├── agent.py          # Flask app, startup, mTLS server lifecycle
-│   ├── state.py          # Shared in-memory state (peers, apps, settings)
-│   ├── models.py         # Peer, RemoteApp, AgentSettings dataclasses
-│   ├── peering.py        # mTLS cert exchange, peer verification
-│   ├── tls.py            # CA/leaf cert generation, k8s Secret/ConfigMap persistence
+│   ├── agent.py              # Flask app, startup, mTLS server lifecycle
+│   ├── state.py              # Shared in-memory state (peers, apps, settings)
+│   ├── models.py             # Peer, RemoteApp, AgentSettings dataclasses
+│   ├── peering.py            # mTLS cert exchange, peer verification
+│   ├── channel.py            # Persistent WebSocket channel (send/recv, reconnect)
+│   ├── channel_handlers.py   # Message handlers (remoteapp/*, proxy/*, peer/*)
+│   ├── tls.py                # CA/leaf cert generation, k8s Secret/ConfigMap persistence
 │   ├── routes/
-│   │   ├── peers.py      # /peers, /peer, /peers/connect, /token
-│   │   ├── workloads.py  # /remoteapp, /remoteapps, /remoteapp/<id>/*
-│   │   ├── tunnels.py    # /remoteapp/<id>/proxy/* (HTTP reverse proxy)
-│   │   └── settings.py   # /settings
+│   │   ├── peers.py          # /peers, /peer, /peers/connect, /token
+│   │   ├── workloads.py      # /remoteapp, /remoteapps, /remoteapp/<id>/*
+│   │   ├── tunnels.py        # /remoteapp/<id>/proxy/* (HTTP reverse proxy)
+│   │   ├── settings.py       # /settings
+│   │   └── ws.py             # /agent/ws (WebSocket upgrade + CA auth)
 │   └── k8s/
-│       ├── executor.py   # Creates/updates/deletes Kubernetes Deployments
-│       └── tunnel.py     # Resolves pod IP from labels, proxies HTTP
+│       ├── executor.py       # Creates/updates/deletes Kubernetes Deployments
+│       └── tunnel.py         # Resolves pod IP from labels, proxies HTTP
 ├── templates/
-│   └── dashboard.html    # Single-page dashboard (no build step)
+│   └── dashboard.html        # Single-page dashboard (no build step)
 ├── static/
 │   └── logo.png
-├── charts/porpulsion/    # Helm chart
+├── charts/porpulsion/        # Helm chart
 │   ├── Chart.yaml
 │   ├── values.yaml
 │   └── templates/
@@ -322,14 +270,28 @@ porpulsion/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile
-└── requirements.txt      # flask, requests, kubernetes, cryptography
+└── requirements.txt
 ```
+
+### WebSocket channel
+
+After peering completes, each agent opens a persistent WebSocket connection to its peer's `/agent/ws` endpoint. Authentication uses the CA fingerprint sent in the `X-Agent-Ca` header (base64-encoded PEM) — no client certificate is needed for the WS upgrade, which avoids nginx client-cert-forwarding complexity.
+
+Both sides attempt to connect outbound on startup. Whichever side connects first becomes the active channel; the other side's outbound attempt arrives as an inbound connection and replaces it cleanly. The channel reconnects automatically with exponential backoff (2s → 4s → 8s → 16s → 30s); backoff resets to 2s after each successful connection.
+
+All peer-to-peer messages are framed as JSON:
+
+| Frame | Format | Description |
+|-------|--------|-------------|
+| Request | `{"id":"<hex>","type":"<method>","payload":{}}` | Expects a reply |
+| Reply | `{"id":"<same>","type":"reply","ok":true,"payload":{}}` | Response to a request |
+| Push | `{"type":"<event>","payload":{}}` | Fire-and-forget |
 
 ### State persistence
 
 | Data | Store | Notes |
 |------|-------|-------|
-| TLS certs + invite token | `porpulsion-credentials` Secret | Generated once, reused on restart |
+| CA cert + invite token | `porpulsion-credentials` Secret | Generated once, reused on restart |
 | Peers (name, URL, CA cert) | `porpulsion-credentials` Secret | Written on every peer add/remove |
 | Submitted apps | `porpulsion-state` ConfigMap | Written on create, status update, delete |
 | Pending approval queue | `porpulsion-state` ConfigMap | Written on enqueue, approve, and reject |
@@ -339,7 +301,8 @@ porpulsion/
 ### Security model
 
 - Every agent generates a private CA on first boot. The CA cert is what peers exchange — never the private key.
-- All agent-to-agent calls use mTLS with `CERT_REQUIRED`. A peer without a cert signed by a trusted CA is rejected at the TLS layer.
+- The peering handshake is bootstrapped over plain HTTPS (verify=False) with a single-use invite token. The CA fingerprint is pinned by the connecting operator before peering completes, preventing MITM.
+- WebSocket connections authenticate by CA fingerprint — the connecting peer sends its CA PEM (base64-encoded) in the `X-Agent-Ca` header, verified against all known peer CAs.
 - Invite tokens are single-use and rotated after every successful peering handshake.
 - The HTTP proxy only routes to pods labelled `porpulsion.io/remote-app-id` — it cannot reach arbitrary pods.
 - RBAC is scoped to the `porpulsion` namespace with only the permissions needed (Deployments, Services, the credentials Secret, the state ConfigMap).
