@@ -1,0 +1,53 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# porpulsion — peer-to-peer Kubernetes connector
+# Helm chart default values
+# ──────────────────────────────────────────────────────────────────────────────
+
+# -- Namespace where the agent and all RemoteApp workloads are deployed.
+namespace: porpulsion
+
+# ── Agent ──────────────────────────────────────────────────────────────────────
+agent:
+  # -- Container image for the porpulsion agent.
+  image: porpulsion:latest
+
+  # -- Image pull policy. Use `Always` when pushing to a remote registry.
+  pullPolicy: IfNotPresent
+
+  # -- Number of agent replicas. Only 1 is supported; this field is reserved.
+  replicas: 1
+
+  # -- Human-readable name for this agent, shown in the dashboard and used
+  #    during peer handshakes. Defaults to the hostname if unset.
+  agentName: ""
+
+  # -- Externally reachable mTLS URL for this agent (e.g. https://agent.example.com:8443).
+  #    Peer agents use this address to initiate connections. Auto-detected from
+  #    the pod's default route if left empty, but explicit is recommended.
+  selfUrl: ""
+
+# ── Service ────────────────────────────────────────────────────────────────────
+# A single Service exposes both the HTTP dashboard and the mTLS agent port.
+# Defaults to ClusterIP. For local development, set type=NodePort and supply
+# nodePort values (see Makefile for an example).
+#
+# Production: leave type=ClusterIP and put an Ingress or LoadBalancer on top.
+#
+#   kubectl port-forward svc/porpulsion 8000:8000   # dashboard
+#   kubectl port-forward svc/porpulsion 8443:8443   # mTLS (TCP only)
+
+service:
+  # -- Service type. ClusterIP for production; NodePort for local dev.
+  type: ClusterIP
+
+  # -- Port the HTTP dashboard listens on inside the cluster.
+  uiPort: 8000
+
+  # -- Port the mTLS agent listener binds to inside the cluster.
+  agentPort: 8443
+
+  # -- NodePort for the dashboard. Only used when type=NodePort.
+  uiNodePort: ""
+
+  # -- NodePort for the mTLS agent. Only used when type=NodePort.
+  agentNodePort: ""

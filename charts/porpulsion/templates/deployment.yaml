@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "porpulsion.fullname" . }}-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ include "porpulsion.fullname" . }}-agent
+spec:
+  replicas: {{ .Values.agent.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "porpulsion.fullname" . }}-agent
+  template:
+    metadata:
+      labels:
+        app: {{ include "porpulsion.fullname" . }}-agent
+      annotations:
+        # Force a pod restart on every helm upgrade so the new image is always pulled.
+        helm.sh/chart-revision: {{ .Release.Revision | quote }}
+    spec:
+      serviceAccountName: {{ include "porpulsion.fullname" . }}-sa
+      containers:
+        - name: agent
+          image: {{ .Values.agent.image }}
+          imagePullPolicy: {{ .Values.agent.pullPolicy }}
+          ports:
+            - name: ui
+              containerPort: {{ .Values.service.uiPort }}
+            - name: agent
+              containerPort: {{ .Values.service.agentPort }}
+          env:
+            - name: AGENT_NAME
+              value: {{ .Values.agent.agentName | quote }}
+            - name: SELF_URL
+              value: {{ .Values.agent.selfUrl | quote }}
+            - name: PORPULSION_NAMESPACE
+              value: {{ .Values.namespace | quote }}
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: {{ .Values.service.uiPort }}
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /status
+              port: {{ .Values.service.uiPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10

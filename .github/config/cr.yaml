@@ -1,0 +1,4 @@
+git-repo: porpulsion
+owner: hartyporpoise
+pages-branch: main
+generate-release-notes: true
