@@ -93,18 +93,46 @@ def initiate_peering(agent_name, self_url, peer_url, invite_token,
     t.start()
 
 
+def _extract_client_cert(request) -> str:
+    """
+    Extract the client certificate PEM from a Flask request.
+
+    Checks two locations in order:
+    1. SSL_CLIENT_CERT — injected into the WSGI environ by _MTLSRequestHandler
+       when the connection arrives directly on the mTLS port (8443).
+    2. X-SSL-Client-Cert HTTP header — set by nginx when it terminates TLS and
+       forwards the client cert (nginx ssl_verify_client optional_no_ca +
+       proxy_set_header X-SSL-Client-Cert $ssl_client_escaped_cert).
+       The cert is URL-encoded in this header, so we decode it first.
+    """
+    import urllib.parse
+
+    cert = request.environ.get("SSL_CLIENT_CERT", "")
+    if cert:
+        return cert
+
+    # nginx URL-encodes the PEM (spaces → +/%, newlines → %0A etc.)
+    header = request.headers.get("X-SSL-Client-Cert", "")
+    if header:
+        return urllib.parse.unquote(header)
+
+    return ""
+
+
 def verify_peer(request, peers):
     """
     Verify that a request comes from a known peer via mTLS.
 
-    All traffic (UI + peer calls) now arrives on the single HTTPS port (8443).
-    The SSL layer uses CERT_REQUIRED once peers exist, so the chain is already
-    validated. We just check that the presented leaf cert was issued by one of
-    our known peer CAs to identify which peer is calling.
+    Supports two transport modes:
+    - Direct mTLS (port 8443): client cert is in SSL_CLIENT_CERT environ key.
+    - nginx TLS termination: nginx forwards cert via X-SSL-Client-Cert header
+      (requires ssl_verify_client optional_no_ca in nginx config).
+
+    Checks that the presented leaf cert was issued by one of our known peer CAs.
     """
     from cryptography.x509 import load_pem_x509_certificate
 
-    client_cert_pem = request.environ.get("SSL_CLIENT_CERT", "")
+    client_cert_pem = _extract_client_cert(request)
     if not client_cert_pem:
         log.warning("verify_peer: no client cert presented")
         return False
@@ -141,7 +169,7 @@ def identify_peer(request, peers) -> str | None:
     """
     from cryptography.x509 import load_pem_x509_certificate
 
-    client_cert_pem = request.environ.get("SSL_CLIENT_CERT", "")
+    client_cert_pem = _extract_client_cert(request)
     if not client_cert_pem:
         return None
 
