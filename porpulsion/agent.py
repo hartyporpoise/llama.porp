@@ -10,7 +10,7 @@ import pathlib
 import socket
 import threading
 
-from flask import Flask, render_template
+from flask import Flask, render_template, Response, jsonify
 
 from porpulsion import state, tls
 from porpulsion.log_buffer import install_log_handler
@@ -123,6 +123,20 @@ app.register_blueprint(settings_bp.bp, url_prefix="/api")
 app.register_blueprint(logs_bp.bp, url_prefix="/api")
 app.register_blueprint(ui_bp.bp)
 
+
+
+@app.route("/api/openapi.json")
+def openapi_json():
+    """Serve generated OpenAPI 3 spec (JSON)."""
+    from porpulsion.openapi_spec import get_openapi_dict
+    return jsonify(get_openapi_dict())
+
+
+@app.route("/api/openapi.yaml")
+def openapi_yaml():
+    """Serve generated OpenAPI 3 spec (YAML)."""
+    from porpulsion.openapi_spec import get_openapi_yaml
+    return Response(get_openapi_yaml(), mimetype="application/x-yaml")
 
 
 def _reconstruct_remote_apps():
