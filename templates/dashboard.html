@@ -615,6 +615,19 @@
     .policy-hint { font-size: 0.7rem; color: var(--muted2); margin-top: 0.2rem; }
     .section-disabled { opacity: 0.38; pointer-events: none; }
 
+    /* ── Logs page ────────────────────────────────────── */
+    .logs-toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    .logs-tail-label { font-size: 0.78rem; color: var(--muted); }
+    .logs-tail-select { padding: 0.25rem 0.5rem; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); }
+    .logs-auto-refresh { font-size: 0.8rem; color: var(--muted); display: flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+    .logs-viewer-wrap { max-height: 70vh; overflow: auto; background: var(--bg); border-radius: 0 0 8px 8px; }
+    .logs-content { margin: 0; padding: 0.75rem 1rem; font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 0.75rem; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-break: break-all; }
+    .log-line { display: block; }
+    .log-line.log-level-ERROR { color: var(--red); }
+    .log-line.log-level-WARNING { color: var(--yellow); }
+    .log-line.log-level-INFO { color: var(--text); }
+    .log-line.log-level-DEBUG { color: var(--muted); }
+
     /* ── Tunnel peer checklist ───────────────────────── */
     .tunnel-peer-row { border-bottom: 1px solid var(--border); }
     .tunnel-peer-row:last-child { border-bottom: none; }
@@ -913,6 +926,9 @@
     <a href="#" data-page="page-tunnels">
       <span class="nav-icon">⇒</span> Proxy
     </a>
+    <a href="#" data-page="page-logs">
+      <span class="nav-icon">▤</span> Logs
+    </a>
     <a href="#" data-page="page-settings">
       <span class="nav-icon">⚙</span> Settings
     </a>
@@ -1180,6 +1196,41 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════ LOGS ═══════════════════════════════ -->
+    <div class="page" id="page-logs">
+      <div class="card">
+        <div class="card-header">
+          <h2>Workload logs</h2>
+          <div class="logs-toolbar">
+            <label class="logs-tail-label">Workload:</label>
+            <select id="logs-workload" class="logs-tail-select" style="min-width: 200px;">
+              <option value="">Select a workload…</option>
+            </select>
+            <label class="logs-tail-label">Tail:</label>
+            <select id="logs-tail" class="logs-tail-select">
+              <option value="100">100</option>
+              <option value="200" selected>200</option>
+              <option value="500">500</option>
+            </select>
+            <label class="logs-tail-label">View:</label>
+            <select id="logs-view" class="logs-tail-select" title="By pod: separate section per pod. Combined: single chronological tail.">
+              <option value="pod">By pod</option>
+              <option value="time">Combined (time)</option>
+            </select>
+            <button type="button" class="btn-sm" id="logs-refresh">Refresh</button>
+            <label class="logs-auto-refresh">
+              <input type="checkbox" id="logs-auto-refresh"> Auto-refresh (3s)
+            </label>
+          </div>
+        </div>
+        <div class="card-body no-pad">
+          <div class="logs-viewer-wrap">
+            <pre id="logs-content" class="logs-content">Select a workload to view its pod logs.</pre>
           </div>
         </div>
       </div>
@@ -1549,10 +1600,21 @@
                   <tr><td><span class="method-post">POST</span></td><td><code>/remoteapp</code></td><td>Submit a new app to a peer. Body: <code>{"name","spec":{}}</code></td></tr>
                   <tr><td><span class="method-get">GET</span></td><td><code>/remoteapps</code></td><td>List all submitted and executing apps.</td></tr>
                   <tr><td><span class="method-get">GET</span></td><td><code>/remoteapp/{id}/detail</code></td><td>Get k8s deployment detail for an app.</td></tr>
+                  <tr><td><span class="method-get">GET</span></td><td><code>/remoteapp/{id}/logs</code></td><td>Pod logs for an app. Query: <code>tail</code> (default 200), <code>pod</code> (optional pod name).</td></tr>
                   <tr><td><span class="method-put">PUT</span></td><td><code>/remoteapp/{id}/spec</code></td><td>Update app spec (triggers re-deploy on peer).</td></tr>
                   <tr><td><span class="method-post">POST</span></td><td><code>/remoteapp/{id}/scale</code></td><td>Scale replicas. Body: <code>{"replicas": N}</code></td></tr>
                   <tr><td><span class="method-del">DELETE</span></td><td><code>/remoteapp/{id}</code></td><td>Delete app and clean up peer workloads.</td></tr>
                   <tr><td><span class="method-get">GET</span></td><td><code>/remoteapp/{id}/proxy/{port}/{path}</code></td><td>HTTP reverse proxy to the app's pod on the peer cluster.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="docs-section-title">Logs</div>
+            <div class="api-table-wrap">
+              <table class="docs-table">
+                <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="method-get">GET</span></td><td><code>/logs</code></td><td>Recent application log lines. Query: <code>tail</code> (default 200), <code>format=json|text</code>.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -1635,6 +1697,19 @@ helm upgrade --install porpulsion ./chart/porpulsion \
   </div>
 </div>
 
+<!-- ── Pod logs modal ────────────────────────────────────── -->
+<div class="modal-backdrop" id="pod-logs-modal">
+  <div class="modal-inner" style="width:min(720px,96vw);max-height:85vh;display:flex;flex-direction:column;">
+    <div class="modal-header">
+      <span class="modal-title" id="pod-logs-title">Pod logs</span>
+      <button class="modal-close" onclick="closePodLogsModal()">✕</button>
+    </div>
+    <div class="modal-body" id="pod-logs-body" style="flex:1;min-height:0;overflow:auto;">
+      <pre id="pod-logs-content" class="logs-content" style="margin:0;padding:0.75rem 1rem;">Loading…</pre>
+    </div>
+  </div>
+</div>
+
 <!-- ── Dialog (confirm / prompt) ──────────────────────────── -->
 <div class="dialog-backdrop" id="dialog-backdrop">
   <div class="dialog-inner">
@@ -1657,6 +1732,7 @@ var PAGE_TITLES = {
   'page-peers':     'Peers',
   'page-workloads': 'Workloads',
   'page-tunnels':   'Proxy',
+  'page-logs':      'Logs',
   'page-settings':  'Settings',
   'page-docs':      'Docs',
 };
@@ -1670,6 +1746,16 @@ document.querySelectorAll('nav a').forEach(function(link) {
     var target = document.getElementById(link.dataset.page);
     if (target) target.classList.add('active');
     document.getElementById('topbar-title').textContent = PAGE_TITLES[link.dataset.page] || '';
+
+    if (link.dataset.page === 'page-logs') {
+      loadLogs();
+      if (document.getElementById('logs-auto-refresh').checked) {
+        if (window._logsRefreshInterval) clearInterval(window._logsRefreshInterval);
+        window._logsRefreshInterval = setInterval(loadLogs, 3000);
+      }
+    } else {
+      if (window._logsRefreshInterval) { clearInterval(window._logsRefreshInterval); window._logsRefreshInterval = null; }
+    }
   });
 });
 
@@ -1687,10 +1773,97 @@ function _esc(s) {
     .replace(/>/g, '&gt;');
 }
 
+async function loadLogs() {
+  var tail = parseInt(document.getElementById('logs-tail').value, 10) || 200;
+  var el = document.getElementById('logs-content');
+  var workloadSelect = document.getElementById('logs-workload');
+
+  try {
+    var appsR = await fetch('/remoteapps');
+    var apps = await appsR.json();
+    var submitted = apps.submitted || [];
+    var executing = apps.executing || [];
+    var all = submitted.concat(executing);
+    var selected = workloadSelect.value;
+    workloadSelect.innerHTML = '<option value="">Select a workload…</option>';
+    all.forEach(function(a) {
+      var opt = document.createElement('option');
+      opt.value = a.id;
+      opt.textContent = a.name + (a.target_peer ? ' (on ' + a.target_peer + ')' : ' (this cluster)');
+      workloadSelect.appendChild(opt);
+    });
+    if (selected && all.some(function(a) { return a.id === selected; })) {
+      workloadSelect.value = selected;
+    }
+  } catch (e) {
+    el.textContent = 'Failed to load workloads: ' + e.message;
+    return;
+  }
+
+  var appId = workloadSelect.value;
+  if (!appId) {
+    el.textContent = 'Select a workload to view its pod logs.';
+    return;
+  }
+
+  try {
+    var r = await fetch('/remoteapp/' + encodeURIComponent(appId) + '/logs?tail=' + tail + '&order=' + (document.getElementById('logs-view').value || 'pod'));
+    var data = await r.json();
+    var lines = data.lines || [];
+    var err = data.error;
+    if (err) {
+      el.textContent = (lines.length ? lines.map(function(l) { return (l.pod || '') + ': ' + (l.message || ''); }).join('\n') + '\n\n' : '') + 'Error: ' + err;
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+    if (lines.length === 0) {
+      el.innerHTML = '<span class="text-muted">No log lines (pod may be starting or not found).</span>';
+      return;
+    }
+    var view = document.getElementById('logs-view').value || 'pod';
+    if (view === 'time') {
+      el.textContent = lines.map(function(entry) {
+        var prefix = (entry.ts ? entry.ts + ' ' : '') + (entry.pod || '') + ': ';
+        return prefix + (entry.message || '');
+      }).join('\n');
+    } else {
+      var byPod = {};
+      lines.forEach(function(entry) {
+        var p = entry.pod || '—';
+        if (!byPod[p]) byPod[p] = [];
+        byPod[p].push(entry.message || '');
+      });
+      el.textContent = Object.keys(byPod).map(function(podName) {
+        return '——— ' + podName + ' ———\n' + byPod[podName].join('\n');
+      }).join('\n\n');
+    }
+    el.scrollTop = el.scrollHeight;
+  } catch (err) {
+    el.textContent = 'Failed to load logs: ' + err.message;
+  }
+}
+document.getElementById('logs-refresh').addEventListener('click', loadLogs);
+document.getElementById('logs-workload').addEventListener('change', loadLogs);
+document.getElementById('logs-view').addEventListener('change', loadLogs);
+document.getElementById('logs-auto-refresh').addEventListener('change', function() {
+  if (this.checked && document.getElementById('page-logs').classList.contains('active')) {
+    if (window._logsRefreshInterval) clearInterval(window._logsRefreshInterval);
+    window._logsRefreshInterval = setInterval(loadLogs, 3000);
+  } else {
+    if (window._logsRefreshInterval) { clearInterval(window._logsRefreshInterval); window._logsRefreshInterval = null; }
+  }
+});
+
 // Delegated click handler for app and peer tables (avoids inline onclick quoting issues)
 document.addEventListener('click', function(e) {
   var btn = e.target.closest('button, a');
   if (!btn) return;
+
+  if (btn.classList.contains('pod-logs-btn')) {
+    e.preventDefault();
+    openPodLogsModal(btn.dataset.appId, btn.dataset.appName, btn.dataset.podName || null);
+    return;
+  }
 
   // App rows
   var appRow = btn.closest('tr[data-app-id]');
@@ -3024,6 +3197,45 @@ document.getElementById('app-modal').addEventListener('click', function(e) {
   if (e.target === this) closeAppModal();
 });
 
+function openPodLogsModal(appId, appName, podName) {
+  if (!appId) return;
+  document.getElementById('pod-logs-title').textContent = podName
+    ? 'Logs: ' + (appName || appId) + ' — ' + podName
+    : 'Logs: ' + (appName || appId);
+  document.getElementById('pod-logs-content').textContent = 'Loading…';
+  document.getElementById('pod-logs-modal').classList.add('open');
+  var url = '/remoteapp/' + encodeURIComponent(appId) + '/logs?tail=200';
+  if (podName) url += '&pod=' + encodeURIComponent(podName);
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var el = document.getElementById('pod-logs-content');
+      if (d.error && !(d.lines && d.lines.length)) {
+        el.textContent = 'Error: ' + (d.error || 'Failed to load logs');
+        return;
+      }
+      var lines = d.lines || [];
+      if (lines.length === 0) {
+        el.textContent = 'No log entries.';
+        return;
+      }
+      el.textContent = lines.map(function(entry) {
+        var prefix = entry.pod ? '[' + entry.pod + '] ' : '';
+        return prefix + (entry.message || '');
+      }).join('\n');
+      el.scrollTop = el.scrollHeight;
+    })
+    .catch(function(err) {
+      document.getElementById('pod-logs-content').textContent = 'Failed to load logs: ' + err.message;
+    });
+}
+function closePodLogsModal() {
+  document.getElementById('pod-logs-modal').classList.remove('open');
+}
+document.getElementById('pod-logs-modal').addEventListener('click', function(e) {
+  if (e.target === this) closePodLogsModal();
+});
+
 async function refreshAppModal() {
   if (!_currentAppId) return;
   try {
@@ -3131,14 +3343,16 @@ function renderAppDetail(d) {
       + '</div>';
     if (pods.length) {
       html += '<div style="margin-top:0.75rem;overflow:auto;"><table class="pod-table">'
-        + '<thead><tr><th>Pod</th><th>Phase</th><th>Ready</th><th>Restarts</th><th>Node</th></tr></thead><tbody>'
+        + '<thead><tr><th>Pod</th><th>Phase</th><th>Ready</th><th>Restarts</th><th>Node</th><th></th></tr></thead><tbody>'
         + pods.map(function(p) {
+          var pname = (p.name||'—');
           return '<tr>'
-            + '<td class="mono">' + (p.name||'—') + '</td>'
+            + '<td class="mono">' + _esc(pname) + '</td>'
             + '<td>' + statusBadge(p.phase) + '</td>'
             + '<td>' + (p.ready ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--red)">✗</span>') + '</td>'
             + '<td>' + (p.restarts||0) + '</td>'
             + '<td class="mono">' + (p.node||'—') + '</td>'
+            + '<td><button type="button" class="btn-sm pod-logs-btn" data-app-id="' + _esc(idVal) + '" data-app-name="' + _esc(app.name||'') + '" data-pod-name="' + _esc(pname) + '">Logs</button></td>'
             + '</tr>';
         }).join('')
         + '</tbody></table></div>';
@@ -3160,6 +3374,7 @@ function renderAppDetail(d) {
           + '<button class="btn-sm btn-success" id="modal-scale-btn">Scale</button>'
           + '<button class="btn-sm" id="modal-spec-btn" style="margin-left:auto;">Apply Spec</button>'
         : '<span style="flex:1;"></span>')
+    + '<button class="btn-sm" id="modal-logs-btn">Logs</button>'
     + '<button class="btn-sm btn-danger" id="modal-delete-btn">Delete</button>'
     + '</div>';
 
@@ -3172,6 +3387,7 @@ function renderAppDetail(d) {
     document.getElementById('modal-spec-btn').addEventListener('click', function() { updateAppSpec(_id); });
   }
   document.getElementById('modal-delete-btn').addEventListener('click', function() { deleteApp(_id, _name); });
+  document.getElementById('modal-logs-btn').addEventListener('click', function() { openPodLogsModal(_id, _name, null); });
 }
 
 async function scaleApp(id) {

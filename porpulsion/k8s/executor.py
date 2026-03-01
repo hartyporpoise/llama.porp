@@ -308,3 +308,74 @@ def get_deployment_status(remote_app) -> dict:
         if e.status == 404:
             return {"error": "deployment not found"}
         raise
+
+
+def get_pod_logs(remote_app, tail: int = 200, pod_name: str | None = None, order_by_time: bool = False) -> dict:
+    """
+    Return recent log lines from pods of a RemoteApp.
+    If pod_name is set, only that pod; otherwise all pods (aggregated with pod prefix).
+    If order_by_time is True, fetch with timestamps and return lines sorted by time (single tail).
+    Returns {"lines": [{"pod": str, "message": str, "ts": str|None}, ...]} or {"error": str}.
+    """
+    import re
+    from datetime import datetime, timezone
+
+    try:
+        pods = core_v1.list_namespaced_pod(
+            NAMESPACE,
+            label_selector=f"porpulsion.io/remote-app-id={remote_app.id}",
+        )
+        if pod_name:
+            pods.items = [p for p in pods.items if p.metadata.name == pod_name]
+        if not pods.items:
+            return {"lines": [], "error": "no pods found" if pod_name else "no pods found"}
+
+        lines: list[dict] = []
+        per_pod_tail = max(50, tail // len(pods.items)) if len(pods.items) > 1 else tail
+        ts_re = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s*(.*)$")
+
+        for p in pods.items:
+            name = p.metadata.name
+            try:
+                log_text = core_v1.read_namespaced_pod_log(
+                    name=name,
+                    namespace=NAMESPACE,
+                    tail_lines=per_pod_tail,
+                    timestamps=order_by_time,
+                )
+            except client.ApiException as e:
+                if e.status == 404:
+                    lines.append({"pod": name, "message": "(pod not found)", "ts": None})
+                else:
+                    lines.append({"pod": name, "message": f"(failed to read logs: {e.reason})", "ts": None})
+                continue
+            for line in (log_text or "").strip().splitlines():
+                ts_val = None
+                msg = line
+                if order_by_time:
+                    m = ts_re.match(line)
+                    if m:
+                        ts_val = m.group(1)
+                        msg = m.group(2) or ""
+                lines.append({"pod": name, "message": msg, "ts": ts_val})
+
+        if order_by_time and lines:
+            def sort_key(entry):
+                t = entry.get("ts")
+                if not t:
+                    return (datetime.max.replace(tzinfo=timezone.utc), entry.get("pod", ""), entry.get("message", ""))
+                try:
+                    # Parse ISO8601 with Z suffix
+                    if t.endswith("Z"):
+                        t = t[:-1] + "+00:00"
+                    return (datetime.fromisoformat(t), entry.get("pod", ""), entry.get("message", ""))
+                except Exception:
+                    return (datetime.max.replace(tzinfo=timezone.utc), entry.get("pod", ""), entry.get("message", ""))
+
+            lines.sort(key=sort_key)
+
+        return {"lines": lines}
+    except client.ApiException as e:
+        if e.status == 404:
+            return {"lines": [], "error": "deployment not found"}
+        return {"lines": [], "error": str(e.reason)}
