@@ -1254,6 +1254,9 @@
           if (/^\d+$/.test(val)) val = parseInt(val, 10);
           else if (val === 'true') val = true;
           else if (val === 'false') val = false;
+          else if (val.charAt(0) === '[') {
+            try { val = JSON.parse(val); } catch (e) { /* leave as string */ }
+          }
           obj[key] = val;
           i++;
         } else {
