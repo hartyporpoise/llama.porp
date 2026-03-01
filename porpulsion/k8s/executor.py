@@ -111,8 +111,17 @@ def run_workload(remote_app, callback_url, peer=None):
                                 )
                             ),
                         ))
-                else:
-                    env_list.append(client.V1EnvVar(name=e.name, value=e.value))
+                    elif vf.fieldRef and vf.fieldRef.get("fieldPath"):
+                        env_list.append(client.V1EnvVar(
+                            name=e.name,
+                            value_from=client.V1EnvVarSource(
+                                field_ref=client.V1ObjectFieldSelector(
+                                    field_path=vf.fieldRef["fieldPath"]
+                                )
+                            ),
+                        ))
+                    else:
+                        env_list.append(client.V1EnvVar(name=e.name, value=e.value))
 
         # ── imagePullPolicy / imagePullSecrets ───────────────
         pull_policy = spec.imagePullPolicy
@@ -224,6 +233,48 @@ def run_workload(remote_app, callback_url, peer=None):
                 _report_status(remote_app, callback_url, f"Failed: {e.reason}", peer=peer)
                 return
 
+        # Service for proxy/load-balancing (same name as deployment, selector = app=deploy_name)
+        # Expose all ports from spec.ports (or single spec.port/80)
+        if spec.ports:
+            service_ports = [
+                client.V1ServicePort(
+                    port=p.port,
+                    target_port=p.port,
+                    name=(p.name[:15] if p.name else f"port-{p.port}"),
+                )
+                for p in spec.ports
+            ]
+        else:
+            single_port = spec.port or 80
+            service_ports = [
+                client.V1ServicePort(port=single_port, target_port=single_port, name="http"),
+            ]
+        service = client.V1Service(
+            metadata=client.V1ObjectMeta(
+                name=deploy_name,
+                namespace=NAMESPACE,
+                labels={
+                    "app": deploy_name,
+                    "porpulsion.io/remote-app-id": remote_app.id,
+                },
+            ),
+            spec=client.V1ServiceSpec(
+                selector={"app": deploy_name},
+                ports=service_ports,
+            ),
+        )
+        try:
+            core_v1.create_namespaced_service(namespace=NAMESPACE, body=service)
+            log.info("Created service %s in %s", deploy_name, NAMESPACE)
+        except client.ApiException as e:
+            if e.status == 409:
+                core_v1.replace_namespaced_service(
+                    name=deploy_name, namespace=NAMESPACE, body=service
+                )
+                log.info("Updated service %s", deploy_name)
+            else:
+                log.warning("Failed to create service %s: %s", deploy_name, e.reason)
+
         _report_status(remote_app, callback_url, "Running", peer=peer)
 
         for _ in range(60):
@@ -249,7 +300,7 @@ def run_workload(remote_app, callback_url, peer=None):
 
 
 def delete_workload(remote_app) -> None:
-    """Delete the Kubernetes Deployment for a RemoteApp."""
+    """Delete the Kubernetes Deployment and Service for a RemoteApp."""
     deploy_name = f"ra-{remote_app.id}-{remote_app.name}"[:63]
     try:
         apps_v1.delete_namespaced_deployment(
@@ -263,6 +314,14 @@ def delete_workload(remote_app) -> None:
             log.info("Deployment %s already gone", deploy_name)
         else:
             log.warning("Error deleting deployment %s: %s", deploy_name, e.reason)
+    try:
+        core_v1.delete_namespaced_service(name=deploy_name, namespace=NAMESPACE)
+        log.info("Deleted service %s", deploy_name)
+    except client.ApiException as e:
+        if e.status == 404:
+            log.info("Service %s already gone", deploy_name)
+        else:
+            log.warning("Error deleting service %s: %s", deploy_name, e.reason)
 
 
 def scale_workload(remote_app, replicas: int) -> None:

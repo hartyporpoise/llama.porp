@@ -91,6 +91,7 @@ MODEL_ORDER: list[tuple[type, str]] = [
     (models.EnvVar, "EnvVar"),
     (models.PortSpec, "PortSpec"),
     (models.ResourceRequirements, "ResourceRequirements"),
+    (models.AdditionalConfigItem, "AdditionalConfigItem"),
     (models.ReadinessProbe, "ReadinessProbe"),
     (models.SecurityContext, "SecurityContext"),
     (models.RemoteAppSpec, "RemoteAppSpec"),
@@ -113,11 +114,17 @@ REMOTE_APP_SPEC_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "resources": "Kubernetes resource requests and limits. requests/limits with cpu (e.g. 250m, 1) and memory (e.g. 128Mi, 1Gi). Checked against peer quotas.",
     "command": "Override the container ENTRYPOINT, e.g. [\"/bin/sh\", \"-c\"].",
     "args": "Override the container CMD / arguments.",
-    "env": "Environment variables. Each entry: name + value, or valueFrom.secretKeyRef / valueFrom.configMapKeyRef.",
+    "env": "Environment variables. Each entry: name + value, or valueFrom.secretKeyRef / valueFrom.configMapKeyRef / valueFrom.fieldRef (e.g. spec.nodeName).",
+    "additionalConfig": "Optional files to mount into the container. Each entry: mountPath (absolute path in the container, e.g. /etc/app/config.yaml) and content (plain text). Stored in a ConfigMap and mounted read-only.",
     "imagePullPolicy": "Always | IfNotPresent | Never. Use Always with mutable tags like latest.",
     "imagePullSecrets": "Names of k8s Secrets containing registry credentials.",
     "readinessProbe": "Probe for when to send traffic. httpGet (path, port) or exec (command), plus initialDelaySeconds, periodSeconds, failureThreshold.",
     "securityContext": "Pod/container security: runAsNonRoot, runAsUser, runAsGroup, fsGroup, readOnlyRootFilesystem.",
+}
+
+ADDITIONAL_CONFIG_ITEM_PROPERTY_DESCRIPTIONS: dict[str, str] = {
+    "mountPath": "Absolute path in the container where the file will be mounted (e.g. /etc/app/extra.conf).",
+    "content": "Plain-text content of the file. Stored in a ConfigMap and mounted read-only.",
 }
 
 REMOTE_APP_SPEC_EXAMPLES = [
@@ -169,6 +176,18 @@ REMOTE_APP_SPEC_EXAMPLES = [
             "securityContext": {"runAsNonRoot": True, "readOnlyRootFilesystem": True},
         },
     },
+    {
+        "summary": "With additionalConfig (mount extra files)",
+        "value": {
+            "image": "nginx:latest",
+            "replicas": 1,
+            "ports": [{"port": 80, "name": "http"}],
+            "additionalConfig": [
+                {"mountPath": "/etc/app/extra.conf", "content": "# custom config\nserver { listen 80; }"},
+                {"mountPath": "/usr/share/nginx/html/version.txt", "content": "v1.0"},
+            ],
+        },
+    },
 ]
 
 
@@ -185,6 +204,13 @@ def schemas_from_models() -> dict[str, dict[str, Any]]:
             if "properties" in s and prop in s["properties"]:
                 s["properties"][prop]["description"] = desc
         s["example"] = REMOTE_APP_SPEC_EXAMPLES[0]["value"]
+    # Hints for AdditionalConfigItem (referenced by additionalConfig)
+    if "AdditionalConfigItem" in out:
+        s = out["AdditionalConfigItem"]
+        s["description"] = "One file to mount: path in the container and its text content (stored in a ConfigMap)."
+        for prop, desc in ADDITIONAL_CONFIG_ITEM_PROPERTY_DESCRIPTIONS.items():
+            if "properties" in s and prop in s["properties"]:
+                s["properties"][prop]["description"] = desc
     return out
 
 
@@ -206,6 +232,10 @@ def remote_app_request_examples() -> dict[str, Any]:
         "readiness_and_security": {
             "summary": REMOTE_APP_SPEC_EXAMPLES[3]["summary"],
             "value": {"name": "api", "spec": REMOTE_APP_SPEC_EXAMPLES[3]["value"]},
+        },
+        "with_additional_config": {
+            "summary": REMOTE_APP_SPEC_EXAMPLES[4]["summary"],
+            "value": {"name": "nginx-extra", "spec": REMOTE_APP_SPEC_EXAMPLES[4]["value"]},
         },
     }
 

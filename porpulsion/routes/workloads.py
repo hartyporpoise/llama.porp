@@ -310,7 +310,7 @@ def scale_remoteapp(app_id):
 
     if app_id in state.local_apps:
         ra = state.local_apps[app_id]
-        peer = state.peers.get(ra.source_peer) or next(iter(state.peers.values()), None)
+        peer = state.peers.get(ra.target_peer) or next(iter(state.peers.values()), None)
         if not peer:
             return jsonify({"error": "peer not connected"}), 503
         try:
@@ -337,7 +337,7 @@ def scale_remoteapp(app_id):
 def remoteapp_detail(app_id):
     if app_id in state.local_apps:
         ra = state.local_apps[app_id]
-        peer = state.peers.get(ra.source_peer) or next(iter(state.peers.values()), None)
+        peer = state.peers.get(ra.target_peer) or next(iter(state.peers.values()), None)
         if not peer:
             return jsonify({"error": "peer not connected", "app": ra.to_dict()}), 200
         try:

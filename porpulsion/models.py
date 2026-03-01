@@ -8,12 +8,14 @@ from typing import Any, Literal
 class EnvVarSource:
     secretKeyRef: dict | None = None    # {"name": str, "key": str}
     configMapKeyRef: dict | None = None  # {"name": str, "key": str}
+    fieldRef: dict | None = None         # {"fieldPath": str} e.g. spec.nodeName
 
     @classmethod
     def from_dict(cls, d: dict) -> "EnvVarSource":
         return cls(
             secretKeyRef=d.get("secretKeyRef"),
             configMapKeyRef=d.get("configMapKeyRef"),
+            fieldRef=d.get("fieldRef"),
         )
 
     def to_dict(self) -> dict:
@@ -22,6 +24,8 @@ class EnvVarSource:
             out["secretKeyRef"] = self.secretKeyRef
         if self.configMapKeyRef:
             out["configMapKeyRef"] = self.configMapKeyRef
+        if self.fieldRef:
+            out["fieldRef"] = self.fieldRef
         return out
 
 
@@ -96,6 +100,23 @@ class ResourceRequirements:
 
     def is_empty(self) -> bool:
         return not self.requests and not self.limits
+
+
+@dataclass
+class AdditionalConfigItem:
+    """One file to mount: path in the container and its text content (stored in a ConfigMap)."""
+    mountPath: str = ""
+    content: str = ""
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "AdditionalConfigItem":
+        return cls(
+            mountPath=str(d.get("mountPath", "")),
+            content=str(d.get("content", "")),
+        )
+
+    def to_dict(self) -> dict:
+        return {"mountPath": self.mountPath, "content": self.content}
 
 
 @dataclass
@@ -178,7 +199,10 @@ class RemoteAppSpec:
       args          — override container CMD / arguments
 
     Environment:
-      env           — list of EnvVar (plain value or valueFrom secret/configmap)
+      env           — list of EnvVar (plain value or valueFrom secret/configmap/fieldRef)
+
+    Volumes:
+      additionalConfig — list of { mountPath, content }; each content is mounted as a file (ConfigMap)
 
     Image pull:
       imagePullPolicy   — Always | IfNotPresent | Never (default: IfNotPresent)
@@ -208,6 +232,9 @@ class RemoteAppSpec:
     # Environment
     env: list[EnvVar] = field(default_factory=list)
 
+    # Volumes: additional config files (ConfigMap)
+    additionalConfig: list[AdditionalConfigItem] = field(default_factory=list)
+
     # Image pull
     imagePullPolicy: Literal["Always", "IfNotPresent", "Never"] = "IfNotPresent"
     imagePullSecrets: list[str] = field(default_factory=list)
@@ -229,6 +256,7 @@ class RemoteAppSpec:
         sc_raw = d.get("securityContext")
         pull_secrets = d.get("imagePullSecrets")
         res_raw = d.get("resources")
+        add_cfg = d.get("additionalConfig")
         return cls(
             image=str(d.get("image", "nginx:latest")),
             replicas=max(1, int(d.get("replicas") or 1)),
@@ -241,6 +269,8 @@ class RemoteAppSpec:
             args=list(d["args"]) if d.get("args") else None,
             env=[EnvVar.from_dict(e) for e in env_raw if e.get("name")]
                 if env_raw and isinstance(env_raw, list) else [],
+            additionalConfig=[AdditionalConfigItem.from_dict(c) for c in add_cfg if isinstance(c, dict) and c.get("mountPath")]
+                if add_cfg and isinstance(add_cfg, list) else [],
             imagePullPolicy=d.get("imagePullPolicy", "IfNotPresent"),
             imagePullSecrets=list(pull_secrets)
                              if pull_secrets and isinstance(pull_secrets, list) else [],
@@ -265,6 +295,8 @@ class RemoteAppSpec:
             out["args"] = self.args
         if self.env:
             out["env"] = [e.to_dict() for e in self.env]
+        if self.additionalConfig:
+            out["additionalConfig"] = [c.to_dict() for c in self.additionalConfig]
         if self.imagePullPolicy != "IfNotPresent":
             out["imagePullPolicy"] = self.imagePullPolicy
         if self.imagePullSecrets:

@@ -16,5 +16,8 @@ rules:
     verbs: ["create"]
   - apiGroups: [""]
     resources: ["configmaps"]
+    verbs: ["get", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
     resourceNames: ["porpulsion-state"]
     verbs: ["get", "patch"]
