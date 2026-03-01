@@ -774,7 +774,39 @@
     }
     if (spec.env && spec.env.length) {
       lines.push('env:');
-      spec.env.forEach(function (e) { lines.push('  - name: ' + e.name + '\n    value: ' + (e.value || '')); });
+      spec.env.forEach(function (e) {
+        if (e.valueFrom) {
+          lines.push('  - name: ' + e.name);
+          if (e.valueFrom.secretKeyRef) {
+            lines.push('    valueFrom:');
+            lines.push('      secretKeyRef:');
+            lines.push('        name: ' + (e.valueFrom.secretKeyRef.name || ''));
+            lines.push('        key: ' + (e.valueFrom.secretKeyRef.key || ''));
+          } else if (e.valueFrom.configMapKeyRef) {
+            lines.push('    valueFrom:');
+            lines.push('      configMapKeyRef:');
+            lines.push('        name: ' + (e.valueFrom.configMapKeyRef.name || ''));
+            lines.push('        key: ' + (e.valueFrom.configMapKeyRef.key || ''));
+          } else if (e.valueFrom.fieldRef) {
+            lines.push('    valueFrom:');
+            lines.push('      fieldRef:');
+            lines.push('        fieldPath: ' + (e.valueFrom.fieldRef.fieldPath || ''));
+          } else {
+            lines.push('    value: ' + (e.value || ''));
+          }
+        } else {
+          lines.push('  - name: ' + e.name + '\n    value: ' + (e.value != null ? e.value : ''));
+        }
+      });
+    }
+    if (spec.additionalConfig && spec.additionalConfig.length) {
+      lines.push('additionalConfig:');
+      spec.additionalConfig.forEach(function (c) {
+        lines.push('  - mountPath: ' + (c.mountPath || ''));
+        var content = (c.content || '').toString();
+        if (content.indexOf('\n') >= 0) lines.push('    content: |\n      ' + content.replace(/\n/g, '\n      '));
+        else lines.push('    content: ' + content);
+      });
     }
     return lines.join('\n');
   }
