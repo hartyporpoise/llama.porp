@@ -30,24 +30,26 @@
               <tr><td><code>resources</code></td><td>object</td><td>—</td><td>Kubernetes resource requests and limits.</td></tr>
               <tr><td><code>command</code></td><td>list</td><td>—</td><td>Override the container ENTRYPOINT.</td></tr>
               <tr><td><code>args</code></td><td>list</td><td>—</td><td>Override the container CMD.</td></tr>
-              <tr><td><code>env</code></td><td>list</td><td>—</td><td>Environment variables.</td></tr>
+              <tr><td><code>env</code></td><td>list</td><td>—</td><td>Environment variables. Each entry: <code>name</code> + <code>value</code>, or <code>valueFrom</code> with <code>secretKeyRef</code>, <code>configMapKeyRef</code>, or <code>fieldRef</code>.</td></tr>
+              <tr><td><code>additionalConfig</code></td><td>list</td><td>—</td><td>Config files to mount into the container via ConfigMap. Each entry: <code>mountPath</code> (full path in container) and <code>content</code> (file text).</td></tr>
+              <tr><td><code>imagePullPolicy</code></td><td>string</td><td>IfNotPresent</td><td>Image pull policy: <code>Always</code>, <code>IfNotPresent</code>, or <code>Never</code>.</td></tr>
+              <tr><td><code>imagePullSecrets</code></td><td>list</td><td>—</td><td>Names of Secrets containing registry credentials, e.g. <code>- ghcr-credentials</code>.</td></tr>
               <tr><td><code>readinessProbe</code></td><td>object</td><td>—</td><td>Probe for when traffic should be sent to the pod.</td></tr>
               <tr><td><code>securityContext</code></td><td>object</td><td>—</td><td>Pod/container security settings.</td></tr>
             </tbody>
           </table>
         </div>
-        <div class="docs-section-title">Minimal example</div>
+        <div class="docs-section-title">Example</div>
         <div class="docs-code">
-          <pre>image: nginx:latest
-replicas: 1
-ports:
-  - port: 80
-    name: http</pre>
-        </div>
-        <div class="docs-section-title">With resources and env vars</div>
-        <div class="docs-code">
-          <pre>image: myapp:v2.1
+          <pre>image: ghcr.io/myorg/api:v3.0
 replicas: 2
+command: ["/bin/sh", "-c"]
+args: ["exec myapp --port 8080"]
+ports:
+  - port: 8080
+    name: http
+  - port: 9090
+    name: metrics
 resources:
   requests:
     cpu: 250m
@@ -55,11 +57,6 @@ resources:
   limits:
     cpu: 500m
     memory: 512Mi
-ports:
-  - port: 8080
-    name: http
-  - port: 9090
-    name: metrics
 env:
   - name: NODE_ENV
     value: production
@@ -67,27 +64,17 @@ env:
     valueFrom:
       secretKeyRef:
         name: my-secret
-        key: api-key</pre>
-        </div>
-        <div class="docs-section-title">Custom entrypoint</div>
-        <div class="docs-code">
-          <pre>image: python:3.11-slim
-command:
-  - /bin/sh
-  - -c
-args:
-  - python -m http.server 8000
-ports:
-  - port: 8000
-    name: http</pre>
-        </div>
-        <div class="docs-section-title">Readiness probe + security hardening</div>
-        <div class="docs-code">
-          <pre>image: ghcr.io/myorg/api:v3.0
-replicas: 2
-ports:
-  - port: 8080
-    name: http
+        key: api-key
+  - name: NODE_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: spec.nodeName
+additionalConfig:
+  - mountPath: /etc/myapp/config.yaml
+    content: |
+      log_level: info
+      timeout: 30s
+imagePullPolicy: Always
 imagePullSecrets:
   - ghcr-credentials
 readinessProbe:

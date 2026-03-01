@@ -900,10 +900,12 @@
 
       // ── Spec tab (submitted apps only) ───────────────────────
       var specYaml = _specToYaml(spec);
+      var specLineCount = specYaml ? specYaml.split('\n').length : 1;
+      var specEditorPx = Math.max(180, Math.min(520, specLineCount * 19 + 16));
       var editHtml = isSubmitted
         ? '<p class="text-sm text-muted" style="margin-bottom:0.75rem;">Edit the YAML spec and save to update the running deployment.</p>' +
           '<div class="monaco-editor-wrap" id="modal-spec-editor-wrap">' +
-            '<div id="modal-spec-editor-host" class="monaco-editor-host" style="height:220px;" aria-label="YAML spec editor"></div>' +
+            '<div id="modal-spec-editor-host" class="monaco-editor-host" style="height:' + specEditorPx + 'px;" aria-label="YAML spec editor"></div>' +
             '<textarea id="modal-spec-textarea" class="monaco-fallback-textarea modal-spec-editor" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" data-spec-yaml="' + _esc(specYaml) + '">' + _esc(specYaml) + '</textarea>' +
           '</div>' +
           '<div class="flex-end mt1"><button type="button" class="btn-sm" id="modal-spec-save">Save &amp; apply</button></div>'
@@ -1282,24 +1284,18 @@
               var itemIndent = itemLine.search(/\S/);
               if (itemIndent <= indent) break;
               if (itemTrimmed.charAt(0) === '-') {
-                var itemVal = itemTrimmed.slice(1).trim();
-                var itemObj = {};
                 var baseIndent = itemIndent;
                 i++;
-                while (i < lines.length) {
-                  var contLine = lines[i];
-                  var contTrimmed = contLine.trim();
-                  if (!contTrimmed) { i++; continue; }
-                  var contIndent = contLine.search(/\S/);
-                  if (contIndent <= baseIndent) break;
-                  var pi = contTrimmed.indexOf(':');
-                  if (pi !== -1) {
-                    var pk = contTrimmed.slice(0, pi).trim();
-                    var pv = contTrimmed.slice(pi + 1).trim();
-                    if (/^\d+$/.test(pv)) pv = parseInt(pv, 10);
-                    itemObj[pk] = pv;
-                  }
-                  i++;
+                // Skip blank lines to find actual content indent
+                var ci = i;
+                while (ci < lines.length && !lines[ci].trim()) ci++;
+                var itemObj;
+                if (ci < lines.length && lines[ci].search(/\S/) > baseIndent) {
+                  var itemSub = parseBlock(i, baseIndent + 1);
+                  itemObj = itemSub.obj;
+                  i = itemSub.nextIdx;
+                } else {
+                  itemObj = {};
                 }
                 listItems.push(itemObj);
               } else i++;
