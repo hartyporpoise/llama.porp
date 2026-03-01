@@ -1,6 +1,62 @@
 {% extends "base.html" %}
 {% block title %}Docs{% endblock %}
 {% block topbar_title %}Docs{% endblock %}
+{% block head %}
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+  <style>
+    .docs-swagger-wrap { margin: 0; padding: 0; background: var(--surface); overflow: hidden; }
+    .docs-swagger-intro { margin-bottom: 0.5rem; font-size: 0.8rem; color: var(--muted); }
+    .docs-swagger-intro a { color: var(--accent2); }
+    .docs-swagger-wrap .swagger-ui { font-family: inherit !important; background: var(--surface) !important; }
+    .docs-swagger-wrap .swagger-ui .topbar { display: none !important; }
+    .docs-swagger-wrap .swagger-ui .information-container,
+    .docs-swagger-wrap .swagger-ui .wrapper,
+    .docs-swagger-wrap .swagger-ui [class*="wrapper"],
+    .docs-swagger-wrap .swagger-ui [class*="Loading"] { background: var(--surface) !important; margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
+    .docs-swagger-wrap .swagger-ui [class*="main"] { min-height: 0 !important; }
+    .docs-swagger-wrap .swagger-ui > div { margin: 0 !important; padding: 0 !important; gap: 0 !important; display: block !important; }
+    .docs-swagger-wrap .swagger-ui > div > * { flex: none !important; min-height: 0 !important; }
+    .docs-swagger-wrap .swagger-ui .info hgroup { margin-bottom: 0.5rem !important; }
+    .docs-swagger-wrap #swagger-ui .info { margin: 0 0 1rem 0 !important; padding: 0 !important; }
+    .docs-swagger-wrap .swagger-ui .info .title { color: var(--text) !important; font-size: 1.5rem !important; }
+    .docs-swagger-wrap .swagger-ui .info p, .docs-swagger-wrap .swagger-ui .info .description { color: var(--muted) !important; }
+    .docs-swagger-wrap .swagger-ui .info a { color: var(--accent2) !important; }
+    .docs-swagger-wrap .swagger-ui .scheme-container { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: 8px !important; box-shadow: none !important; padding: 0.75rem 1rem !important; margin: 0 0 1rem 0 !important; }
+    .docs-swagger-wrap .swagger-ui .opblock { border: 1px solid var(--border) !important; border-radius: 8px !important; margin-bottom: 0.5rem !important; background: var(--surface) !important; }
+    .docs-swagger-wrap .swagger-ui .opblock .opblock-summary { border-color: var(--border) !important; }
+    .docs-swagger-wrap .swagger-ui .opblock-summary-get { border-left: 4px solid var(--green) !important; }
+    .docs-swagger-wrap .swagger-ui .opblock-summary-post { border-left: 4px solid var(--accent) !important; }
+    .docs-swagger-wrap .swagger-ui .opblock-summary-put { border-left: 4px solid var(--yellow) !important; }
+    .docs-swagger-wrap .swagger-ui .opblock-summary-delete { border-left: 4px solid var(--red) !important; }
+    .docs-swagger-wrap .swagger-ui .opblock .opblock-summary-method { background: var(--surface2) !important; color: var(--text) !important; border-radius: 4px !important; }
+    .docs-swagger-wrap .swagger-ui .opblock-summary-get .opblock-summary-method { background: var(--green) !important; color: #fff !important; }
+    .docs-swagger-wrap .swagger-ui .opblock-summary-post .opblock-summary-method { background: var(--accent) !important; color: #fff !important; }
+    .docs-swagger-wrap .swagger-ui .opblock-summary-put .opblock-summary-method { background: var(--yellow) !important; color: #000 !important; }
+    .docs-swagger-wrap .swagger-ui .opblock-summary-delete .opblock-summary-method { background: var(--red) !important; color: #fff !important; }
+    .docs-swagger-wrap .swagger-ui .opblock .opblock-summary-path { color: var(--text) !important; font-weight: 500 !important; }
+    .docs-swagger-wrap .swagger-ui .opblock .opblock-summary-description { color: var(--muted) !important; }
+    .docs-swagger-wrap .swagger-ui .opblock-body { background: var(--surface2) !important; border-color: var(--border) !important; }
+    .docs-swagger-wrap .swagger-ui .table-container { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: 6px !important; }
+    .docs-swagger-wrap .swagger-ui table thead th { background: var(--surface2) !important; border-color: var(--border) !important; color: var(--muted) !important; }
+    .docs-swagger-wrap .swagger-ui table tbody td { border-color: var(--border) !important; color: var(--text) !important; }
+    .docs-swagger-wrap .swagger-ui .model-box { background: var(--surface) !important; border-radius: 6px !important; border: 1px solid var(--border) !important; }
+    .docs-swagger-wrap .swagger-ui .model-title { color: var(--accent2) !important; }
+    .docs-swagger-wrap .swagger-ui input[type=text], .docs-swagger-wrap .swagger-ui textarea, .docs-swagger-wrap .swagger-ui select { background: var(--surface2) !important; border: 1px solid var(--border) !important; color: var(--text) !important; border-radius: 6px !important; }
+    .docs-swagger-wrap .swagger-ui .btn { border-radius: 6px !important; font-weight: 500 !important; }
+    .docs-swagger-wrap .swagger-ui .btn.execute { background: var(--accent) !important; border-color: var(--accent) !important; color: #fff !important; }
+    .docs-swagger-wrap .swagger-ui .btn.execute:hover { background: var(--accent2) !important; border-color: var(--accent2) !important; }
+    .docs-swagger-wrap .swagger-ui .try-out__btn { color: var(--accent2) !important; }
+    .docs-swagger-wrap .swagger-ui .opblock-section-header { background: var(--surface) !important; border-color: var(--border) !important; }
+    .docs-swagger-wrap .swagger-ui .opblock-section-header label { color: var(--text) !important; }
+    @media (max-width: 768px) {
+      .docs-swagger-wrap .swagger-ui .info .title { font-size: 1.25rem !important; }
+      .docs-swagger-wrap .swagger-ui .opblock .opblock-summary { flex-wrap: wrap !important; }
+      .docs-swagger-wrap .swagger-ui .opblock-summary-path { word-break: break-all !important; font-size: 0.8rem !important; }
+      .docs-swagger-wrap .swagger-ui .btn { padding: 0.5rem 0.75rem !important; font-size: 0.8rem !important; }
+      .docs-swagger-wrap .swagger-ui input[type=text], .docs-swagger-wrap .swagger-ui textarea { font-size: 16px !important; min-height: 2.25rem !important; }
+    }
+  </style>
+{% endblock %}
 {% block content %}
 <!-- PAGE: Docs (route: /docs) -->
 <section id="docs-page" data-page="docs" class="docs-layout">
@@ -44,6 +100,62 @@ ports:
   - port: 80
     name: http</pre>
         </div>
+        <div class="docs-section-title">With resources and env vars</div>
+        <div class="docs-code">
+          <pre>image: myapp:v2.1
+replicas: 2
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+ports:
+  - port: 8080
+    name: http
+  - port: 9090
+    name: metrics
+env:
+  - name: NODE_ENV
+    value: production
+  - name: API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: my-secret
+        key: api-key</pre>
+        </div>
+        <div class="docs-section-title">Custom entrypoint</div>
+        <div class="docs-code">
+          <pre>image: python:3.11-slim
+command:
+  - /bin/sh
+  - -c
+args:
+  - python -m http.server 8000
+ports:
+  - port: 8000
+    name: http</pre>
+        </div>
+        <div class="docs-section-title">Readiness probe + security hardening</div>
+        <div class="docs-code">
+          <pre>image: ghcr.io/myorg/api:v3.0
+replicas: 2
+ports:
+  - port: 8080
+    name: http
+imagePullSecrets:
+  - ghcr-credentials
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 5
+securityContext:
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true</pre>
+        </div>
       </div>
     </div>
   </section>
@@ -55,50 +167,39 @@ ports:
         <h2>HTTP API</h2>
       </div>
       <div class="card-body">
-        <p class="docs-intro">All API endpoints are under <code>/api</code>. Example: <code>GET /api/peers</code>.</p>
-        <div class="docs-section-title">Peering</div>
-        <div class="api-table-wrap">
-          <table class="docs-table">
-            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
-            <tbody>
-              <tr><td><span class="method-get">GET</span></td><td><code>/api/token</code></td><td>Invite token, self URL, CA fingerprint.</td></tr>
-              <tr><td><span class="method-post">POST</span></td><td><code>/api/peers/connect</code></td><td>Initiate peering. Body: <code>{"url","invite_token","ca_fingerprint"}</code></td></tr>
-              <tr><td><span class="method-get">GET</span></td><td><code>/api/peers</code></td><td>List connected and pending peers.</td></tr>
-              <tr><td><span class="method-del">DELETE</span></td><td><code>/api/peers/{name}</code></td><td>Remove a peer.</td></tr>
-              <tr><td><span class="method-get">GET</span></td><td><code>/api/peers/inbound</code></td><td>List pending inbound requests.</td></tr>
-              <tr><td><span class="method-post">POST</span></td><td><code>/api/peers/inbound/{id}/accept</code></td><td>Accept inbound request.</td></tr>
-              <tr><td><span class="method-del">DELETE</span></td><td><code>/api/peers/inbound/{id}</code></td><td>Reject inbound request.</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="docs-section-title">RemoteApps</div>
-        <div class="api-table-wrap">
-          <table class="docs-table">
-            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
-            <tbody>
-              <tr><td><span class="method-post">POST</span></td><td><code>/api/remoteapp</code></td><td>Submit app. Body: <code>{"name","spec":{}}</code></td></tr>
-              <tr><td><span class="method-get">GET</span></td><td><code>/api/remoteapps</code></td><td>List submitted and executing apps.</td></tr>
-              <tr><td><span class="method-get">GET</span></td><td><code>/api/remoteapp/{id}/detail</code></td><td>App and k8s detail.</td></tr>
-              <tr><td><span class="method-get">GET</span></td><td><code>/api/remoteapp/{id}/logs</code></td><td>Pod logs. Query: <code>tail</code>, <code>order=pod|time</code>.</td></tr>
-              <tr><td><span class="method-post">POST</span></td><td><code>/api/remoteapp/{id}/scale</code></td><td>Scale. Body: <code>{"replicas": N}</code></td></tr>
-              <tr><td><span class="method-del">DELETE</span></td><td><code>/api/remoteapp/{id}</code></td><td>Delete app.</td></tr>
-              <tr><td><span class="method-get">GET</span></td><td><code>/api/remoteapp/{id}/proxy/{port}/{path}</code></td><td>HTTP proxy to the app pod.</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="docs-section-title">Settings</div>
-        <div class="table-wrap">
-          <table class="docs-table">
-            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
-            <tbody>
-              <tr><td><span class="method-get">GET</span></td><td><code>/api/settings</code></td><td>Get agent settings.</td></tr>
-              <tr><td><span class="method-post">POST</span></td><td><code>/api/settings</code></td><td>Update settings (JSON body).</td></tr>
-            </tbody>
-          </table>
+        <div class="docs-swagger-wrap">
+          <p class="docs-intro docs-swagger-intro">Use <strong>Try it out</strong> to run requests against this agent. <a href="/api/openapi.json" target="_blank" rel="noopener">openapi.json</a></p>
+          <div id="swagger-ui"></div>
         </div>
       </div>
     </div>
   </section>
 
 </section>
+{% endblock %}
+{% block scripts %}
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+  <script>
+  (function() {
+    function initSwaggerUI() {
+      if (window._swaggerUiInit) return;
+      var container = document.getElementById('swagger-ui');
+      if (!container || typeof SwaggerUIBundle === 'undefined') return;
+      window._swaggerUiInit = true;
+      window.ui = SwaggerUIBundle({
+        url: '/api/openapi.json',
+        dom_id: '#swagger-ui',
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: 'StandaloneLayout',
+        persistAuthorization: true
+      });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initSwaggerUI);
+    } else {
+      initSwaggerUI();
+    }
+  })();
+  </script>
 {% endblock %}

@@ -62,8 +62,13 @@
         return;
       }
 
-      registerYamlHints(monaco, '/api/openapi.json');
-      deploySpecEditor = monaco.editor.create(hostEl, {
+      loadDeployHints('/api/openapi.json').then(function (hints) {
+        hintSchema = hints || {};
+      }).catch(function () {
+        hintSchema = {};
+      }).then(function () {
+        registerYamlHints(monaco);
+        deploySpecEditor = monaco.editor.create(hostEl, {
         value: yamlEl.value || DEFAULT_DEPLOY_SPEC,
         language: 'yaml',
         theme: getDeploySpecTheme(),
@@ -101,6 +106,7 @@
         });
         deployThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
       }
+      });
     }, function () {
       deployEditorInitStarted = false;
       useFallbackEditor(yamlEl, fallbackEl, hostEl);
@@ -119,21 +125,29 @@
   }
 
   function getRemoteAppSpecSchema(specDoc) {
-    var requestSchema = specDoc.paths['/api/remoteapp'].post.requestBody.content['application/json'].schema;
+    var paths = specDoc.paths;
+    if (!paths) return null;
+    var postOp = paths['/remoteapp'] && paths['/remoteapp'].post;
+    if (!postOp || !postOp.requestBody || !postOp.requestBody.content) return null;
+    var content = postOp.requestBody.content['application/json'] || postOp.requestBody.content[Object.keys(postOp.requestBody.content)[0]];
+    if (!content || !content.schema) return null;
+    var requestSchema = content.schema;
     var resolvedRequest = resolveRef(specDoc, requestSchema);
+    if (!resolvedRequest || !resolvedRequest.properties || !resolvedRequest.properties.spec) return null;
     return resolveRef(specDoc, resolvedRequest.properties.spec);
   }
 
   function buildHintsFromSpec(specSchema) {
     var hints = {};
+    if (!specSchema || !specSchema.properties) return hints;
     var required = specSchema.required || [];
     Object.keys(specSchema.properties).forEach(function (key) {
       var prop = specSchema.properties[key];
-      var kind = prop.type || 'field';
+      var kind = (prop && prop.type) ? prop.type : 'field';
       var req = required.indexOf(key) !== -1;
       hints[key] = {
         detail: (req ? 'Required ' : 'Optional ') + kind,
-        docs: prop.description || ('OpenAPI field `' + key + '`.')
+        docs: (prop && prop.description) ? prop.description : ('Field `' + key + '`.')
       };
     });
     return hints;
@@ -141,18 +155,20 @@
 
   function loadDeployHints(openApiUrl) {
     return fetch(openApiUrl, { credentials: 'same-origin' }).then(function (res) {
+      if (!res.ok) return null;
       return res.json().then(function (specDoc) {
         var specSchema = getRemoteAppSpecSchema(specDoc);
-        return buildHintsFromSpec(specSchema);
+        return specSchema ? buildHintsFromSpec(specSchema) : {};
       });
     }).catch(function () { return null; });
   }
 
-  function registerYamlHints(monaco, openApiUrl) {
+  function registerYamlHints(monaco) {
     if (!monaco || window.__porpulsionYamlHintsRegistered) return;
+    window.__porpulsionYamlHintsRegistered = true;
 
     monaco.languages.registerCompletionItemProvider('yaml', {
-      triggerCharacters: ['\n', ' '],
+      triggerCharacters: ['\n', ' ', ':'],
       provideCompletionItems: function (model, position) {
         var keySuggestions = Object.keys(hintSchema).map(function (key) {
           return {
@@ -191,13 +207,6 @@
           ]
         };
       }
-    });
-
-    window.__porpulsionYamlHintsRegistered = true;
-    loadDeployHints(openApiUrl).then(function (hints) {
-      hintSchema = hints || {};
-    }).catch(function () {
-      hintSchema = {};
     });
   }
 
