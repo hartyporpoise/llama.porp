@@ -331,6 +331,10 @@
       toast('Saved', 'ok');
     }).catch(function (err) { toast(err.message, 'error'); });
   }
+  function _saveTunnelPeers() {
+    P.updateSettings({ allowed_tunnel_peers: _getTunnelAllowedValue() })
+      .catch(function (err) { toast(err.message, 'error'); });
+  }
   // ── Tunnel peer allowlist state ────────────────────────────────
   // _tunnelState.denied: Set of denied entries (peer names or "peer/app-id")
   // Empty denied set = all allowed (default). We track denials so "all on by default" is intuitive.
@@ -405,12 +409,14 @@
         // Sync app checkboxes
         var appChks = list.querySelectorAll('.tunnel-app-chk[data-peer="' + peerName + '"]');
         appChks.forEach(function (ac) { ac.disabled = !chk.checked; if (!chk.checked) ac.checked = false; else ac.checked = !_tunnelIsDenied(peerName + '/' + ac.dataset.appId); });
+        _saveTunnelPeers();
       });
     });
     list.querySelectorAll('.tunnel-app-chk').forEach(function (chk) {
       chk.addEventListener('change', function () {
         var appKey = chk.dataset.peer + '/' + chk.dataset.appId;
         _tunnelSetDenied(appKey, !chk.checked);
+        _saveTunnelPeers();
       });
     });
     // Click on .has-apps header to expand/collapse app list

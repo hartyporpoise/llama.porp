@@ -189,15 +189,13 @@ def handle_proxy_request(payload: dict, peer_name: str = "") -> dict:
     if not state.settings.allow_inbound_tunnels:
         raise RuntimeError("inbound tunnels are disabled on this agent")
 
-    # Enforce per-peer tunnel allowlist. Empty string = deny all.
+    # Enforce per-peer tunnel allowlist. Empty string = allow all.
     allowed_raw = (state.settings.allowed_tunnel_peers or "").strip()
     if allowed_raw:
         allowed_tokens = {t.strip() for t in allowed_raw.split(",") if t.strip()}
         # Tokens are either "peer" (allow all apps from that peer) or "peer/app_id"
         if peer_name not in allowed_tokens and f"{peer_name}/{app_id}" not in allowed_tokens:
             raise RuntimeError(f"tunnel from peer '{peer_name}' is not permitted")
-    else:
-        raise RuntimeError(f"tunnel from peer '{peer_name}' is not permitted (no peers allowed)")
 
     if app_id not in state.remote_apps:
         raise RuntimeError("app not found")
