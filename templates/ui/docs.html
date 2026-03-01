@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Docs{% endblock %}
+{% block topbar_title %}Docs{% endblock %}
+{% block content %}
+<!-- PAGE: Docs (route: /docs) -->
+<section id="docs-page" data-page="docs" class="docs-layout">
+
+  <!-- SECTION: RemoteApp Spec -->
+  <section id="docs-spec" class="page-section" aria-label="RemoteApp spec reference">
+    <div class="card">
+      <div class="card-header">
+        <h2>RemoteApp Spec</h2>
+      </div>
+      <div class="card-body">
+        <p class="docs-intro">The spec is submitted as YAML in the Deploy form. All fields except <code>image</code> are optional.</p>
+        <div class="table-wrap">
+          <table class="docs-table">
+            <thead>
+              <tr>
+                <th>Field</th>
+                <th>Type</th>
+                <th>Default</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><code>image</code></td><td>string</td><td><em>required</em></td><td>Container image reference, e.g. <code>nginx:latest</code></td></tr>
+              <tr><td><code>replicas</code></td><td>integer</td><td>1</td><td>Number of pod replicas.</td></tr>
+              <tr><td><code>ports</code></td><td>list</td><td>[]</td><td>Ports to expose. Each entry: <code>port</code> (required), <code>name</code> (optional).</td></tr>
+              <tr><td><code>resources</code></td><td>object</td><td>—</td><td>Kubernetes resource requests and limits.</td></tr>
+              <tr><td><code>command</code></td><td>list</td><td>—</td><td>Override the container ENTRYPOINT.</td></tr>
+              <tr><td><code>args</code></td><td>list</td><td>—</td><td>Override the container CMD.</td></tr>
+              <tr><td><code>env</code></td><td>list</td><td>—</td><td>Environment variables.</td></tr>
+              <tr><td><code>readinessProbe</code></td><td>object</td><td>—</td><td>Probe for when traffic should be sent to the pod.</td></tr>
+              <tr><td><code>securityContext</code></td><td>object</td><td>—</td><td>Pod/container security settings.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="docs-section-title">Minimal example</div>
+        <div class="docs-code">
+          <pre>image: nginx:latest
+replicas: 1
+ports:
+  - port: 80
+    name: http</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION: HTTP API -->
+  <section id="docs-api" class="page-section" aria-label="HTTP API reference">
+    <div class="card">
+      <div class="card-header">
+        <h2>HTTP API</h2>
+      </div>
+      <div class="card-body">
+        <p class="docs-intro">All API endpoints are under <code>/api</code>. Example: <code>GET /api/peers</code>.</p>
+        <div class="docs-section-title">Peering</div>
+        <div class="api-table-wrap">
+          <table class="docs-table">
+            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td><span class="method-get">GET</span></td><td><code>/api/token</code></td><td>Invite token, self URL, CA fingerprint.</td></tr>
+              <tr><td><span class="method-post">POST</span></td><td><code>/api/peers/connect</code></td><td>Initiate peering. Body: <code>{"url","invite_token","ca_fingerprint"}</code></td></tr>
+              <tr><td><span class="method-get">GET</span></td><td><code>/api/peers</code></td><td>List connected and pending peers.</td></tr>
+              <tr><td><span class="method-del">DELETE</span></td><td><code>/api/peers/{name}</code></td><td>Remove a peer.</td></tr>
+              <tr><td><span class="method-get">GET</span></td><td><code>/api/peers/inbound</code></td><td>List pending inbound requests.</td></tr>
+              <tr><td><span class="method-post">POST</span></td><td><code>/api/peers/inbound/{id}/accept</code></td><td>Accept inbound request.</td></tr>
+              <tr><td><span class="method-del">DELETE</span></td><td><code>/api/peers/inbound/{id}</code></td><td>Reject inbound request.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="docs-section-title">RemoteApps</div>
+        <div class="api-table-wrap">
+          <table class="docs-table">
+            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td><span class="method-post">POST</span></td><td><code>/api/remoteapp</code></td><td>Submit app. Body: <code>{"name","spec":{}}</code></td></tr>
+              <tr><td><span class="method-get">GET</span></td><td><code>/api/remoteapps</code></td><td>List submitted and executing apps.</td></tr>
+              <tr><td><span class="method-get">GET</span></td><td><code>/api/remoteapp/{id}/detail</code></td><td>App and k8s detail.</td></tr>
+              <tr><td><span class="method-get">GET</span></td><td><code>/api/remoteapp/{id}/logs</code></td><td>Pod logs. Query: <code>tail</code>, <code>order=pod|time</code>.</td></tr>
+              <tr><td><span class="method-post">POST</span></td><td><code>/api/remoteapp/{id}/scale</code></td><td>Scale. Body: <code>{"replicas": N}</code></td></tr>
+              <tr><td><span class="method-del">DELETE</span></td><td><code>/api/remoteapp/{id}</code></td><td>Delete app.</td></tr>
+              <tr><td><span class="method-get">GET</span></td><td><code>/api/remoteapp/{id}/proxy/{port}/{path}</code></td><td>HTTP proxy to the app pod.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="docs-section-title">Settings</div>
+        <div class="table-wrap">
+          <table class="docs-table">
+            <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td><span class="method-get">GET</span></td><td><code>/api/settings</code></td><td>Get agent settings.</td></tr>
+              <tr><td><span class="method-post">POST</span></td><td><code>/api/settings</code></td><td>Update settings (JSON body).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</section>
+{% endblock %}

@@ -37,13 +37,13 @@ spec:
               value: {{ .Values.namespace | quote }}
           readinessProbe:
             httpGet:
-              path: /status
+              path: /api/status
               port: {{ .Values.service.port }}
             initialDelaySeconds: 2
             periodSeconds: 5
           livenessProbe:
             httpGet:
-              path: /status
+              path: /api/status
               port: {{ .Values.service.port }}
             initialDelaySeconds: 5
             periodSeconds: 10

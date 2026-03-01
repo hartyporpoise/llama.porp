@@ -19,6 +19,7 @@ from porpulsion.routes import workloads as workloads_bp
 from porpulsion.routes import tunnels as tunnels_bp
 from porpulsion.routes import settings as settings_bp
 from porpulsion.routes import logs as logs_bp
+from porpulsion.routes import ui as ui_bp
 
 logging.basicConfig(
     level=logging.INFO,
@@ -115,18 +116,13 @@ app = Flask(__name__,
             static_folder=str(_STATIC),
             static_url_path="/static")
 
-app.register_blueprint(peers_bp.bp)
-app.register_blueprint(workloads_bp.bp)
-app.register_blueprint(tunnels_bp.bp)
-app.register_blueprint(settings_bp.bp)
-app.register_blueprint(logs_bp.bp)
+app.register_blueprint(peers_bp.bp, url_prefix="/api")
+app.register_blueprint(workloads_bp.bp, url_prefix="/api")
+app.register_blueprint(tunnels_bp.bp, url_prefix="/api")
+app.register_blueprint(settings_bp.bp, url_prefix="/api")
+app.register_blueprint(logs_bp.bp, url_prefix="/api")
+app.register_blueprint(ui_bp.bp)
 
-@app.route("/")
-@app.route("/ui")
-@app.route("/ui/")
-@app.route("/ui/<path:_>")
-def ui_dashboard(**_):
-    return render_template("dashboard.html", agent_name=state.AGENT_NAME)
 
 
 def _reconstruct_remote_apps():

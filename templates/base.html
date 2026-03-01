@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="var(--bg)">
+  <title>{% block title %}porpulsion{% endblock %} — {{ agent_name }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='logo.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <script>
+    (function() {
+      var mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)');
+      function setTheme() {
+        document.documentElement.setAttribute('data-theme', mq && mq.matches ? 'light' : 'dark');
+      }
+      setTheme();
+      if (mq) mq.addEventListener('change', setTheme);
+    })();
+  </script>
+  <!-- LAYOUT: app root (mobile-first: sidebar drawer, then main) -->
+  <div class="app-root">
+    <div class="sidebar-overlay" id="sidebar-overlay" aria-hidden="true"></div>
+    <!-- LAYOUT: sidebar nav (routes at root: /, /peers, /workloads, /tunnels, /logs, /settings, /docs) -->
+    <aside class="sidebar" id="sidebar" role="navigation">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">
+          <img src="{{ url_for('static', filename='logo.png') }}" alt="">
+          <span class="sidebar-logo-wordmark"><span class="logo-porp">porp</span><span class="logo-ulsion">ulsion</span></span>
+        </div>
+        <button type="button" class="sidebar-close" id="sidebar-close" aria-label="Close menu">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="sidebar-agent">
+        <div class="sidebar-agent-label">Agent</div>
+        <div class="sidebar-agent-name">
+          <span class="health-dot" id="health-dot"></span>
+          {{ agent_name }}
+        </div>
+      </div>
+      <nav id="nav">
+        <a href="/" class="{% if request.endpoint == 'ui.index' %}active{% endif %}">
+          <span class="nav-icon" aria-hidden="true">&#9670;</span> Overview
+        </a>
+        <a href="/peers" class="{% if request.endpoint == 'ui.peers' %}active{% endif %}">
+          <span class="nav-icon" aria-hidden="true">&#8644;</span> Peers
+          <span class="nav-badge" id="nav-inbound-badge" style="display: none">!</span>
+        </a>
+        <a href="/workloads" class="{% if request.endpoint == 'ui.workloads' %}active{% endif %}">
+          <span class="nav-icon" aria-hidden="true">&#11041;</span> Workloads
+          <span class="nav-badge" id="nav-approval-badge" style="display: none">!</span>
+        </a>
+        <a href="/tunnels" class="{% if request.endpoint == 'ui.tunnels' %}active{% endif %}">
+          <span class="nav-icon" aria-hidden="true">&#8658;</span> Proxy
+        </a>
+        <a href="/logs" class="{% if request.endpoint == 'ui.logs' %}active{% endif %}">
+          <span class="nav-icon" aria-hidden="true">&#9776;</span> Logs
+        </a>
+        <a href="/settings" class="{% if request.endpoint == 'ui.settings' %}active{% endif %}">
+          <span class="nav-icon" aria-hidden="true">&#9881;</span> Settings
+        </a>
+        <a href="/docs" class="{% if request.endpoint == 'ui.docs' %}active{% endif %}">
+          <span class="nav-icon" aria-hidden="true">&#9675;</span> Docs
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div>Updated <span id="last-refresh">—</span></div>
+      </div>
+    </aside>
+    <!-- LAYOUT: main content area -->
+    <main class="main">
+      <div class="topbar">
+        <button type="button" class="menu-btn" id="menu-btn" aria-label="Open menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+        </button>
+        <span class="topbar-title" id="topbar-title">{% block topbar_title %}Overview{% endblock %}</span>
+        <div class="topbar-meta">
+          <span id="peer-count-label">0 peers</span>
+        </div>
+      </div>
+      <div class="content" id="page-content">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+  <!-- GLOBAL: toast (JS-driven) -->
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <!-- MODAL: app detail (JS-driven) -->
+  <div class="modal-backdrop" id="app-modal">
+    <div class="modal-inner">
+      <div class="modal-header">
+        <span class="modal-title" id="app-modal-title">App Detail</span>
+        <button type="button" class="modal-close" id="app-modal-close">&#215;</button>
+      </div>
+      <div class="modal-body" id="app-modal-body"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: pod logs -->
+  <div class="modal-backdrop" id="pod-logs-modal">
+    <div class="modal-inner">
+      <div class="modal-header">
+        <span class="modal-title" id="pod-logs-title">Pod Logs</span>
+        <button type="button" class="modal-close" id="pod-logs-close">&#215;</button>
+      </div>
+      <div class="modal-body" id="pod-logs-body" style="flex:1;min-height:0;overflow:auto;">
+        <pre id="pod-logs-content" class="logs-content" style="margin:0;padding:0.75rem 1rem;">Loading…</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- DIALOG: confirm / prompt (JS-driven) -->
+  <div class="dialog-backdrop" id="dialog-backdrop">
+    <div class="dialog-inner">
+      <div class="dialog-title" id="dialog-title"></div>
+      <div class="dialog-body" id="dialog-body"></div>
+      <input class="dialog-input" type="text" id="dialog-input" style="display:none;" autocomplete="off" spellcheck="false">
+      <div class="dialog-actions" id="dialog-actions"></div>
+    </div>
+  </div>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/json-enc.js"></script>
+  <script src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js" defer></script>
+  <script src="{{ url_for('static', filename='js/api.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/pages.js') }}"></script>
+  <script>
+    document.getElementById('menu-btn').addEventListener('click', function() {
+      document.getElementById('sidebar').classList.add('open');
+      document.getElementById('sidebar-overlay').classList.add('open');
+    });
+    document.getElementById('sidebar-overlay').addEventListener('click', function() {
+      document.getElementById('sidebar').classList.remove('open');
+      this.classList.remove('open');
+    });
+    document.getElementById('sidebar-close').addEventListener('click', function() {
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('sidebar-overlay').classList.remove('open');
+    });
+    document.querySelectorAll('#nav a').forEach(function(a) {
+      a.addEventListener('click', function() {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebar-overlay').classList.remove('open');
+      });
+    });
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
