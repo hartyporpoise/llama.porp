@@ -132,7 +132,10 @@ def handle_remoteapp_detail(payload: dict) -> dict:
     app_id = payload.get("id", "")
     if app_id not in state.remote_apps:
         raise RuntimeError("app not found")
-    return get_deployment_status(state.remote_apps[app_id])
+    ra = state.remote_apps[app_id]
+    result = get_deployment_status(ra)
+    result["spec"] = ra.spec.to_dict()
+    return result
 
 
 def handle_remoteapp_logs(payload: dict) -> dict:

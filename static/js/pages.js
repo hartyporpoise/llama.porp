@@ -860,7 +860,7 @@
     modal.classList.add('open');
     P.getAppDetail(appId).then(function (d) {
       var app = d.app || {};
-      var spec = app.spec || {};
+      var spec = (d.k8s && d.k8s.spec) || app.spec || {};
       var isSubmitted = !!app.target_peer;
 
       // ── Overview tab ──────────────────────────────────────────
