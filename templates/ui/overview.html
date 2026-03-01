@@ -75,14 +75,19 @@
             </div>
             <div class="form-group">
               <label class="form-label" for="app-spec-yaml">Spec (YAML)</label>
-              <div class="yaml-editor-wrap is-placeholder" id="deploy-editor-wrap">
-                <div class="yaml-linenos" id="deploy-editor-linenos">1</div>
-                <div class="yaml-editor-inner">
-                  <div class="yaml-highlight" id="deploy-editor-hl" aria-hidden="true"></div>
-                  <textarea class="yaml-textarea" id="app-spec-yaml" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" aria-label="YAML spec"></textarea>
-                </div>
+              <div class="monaco-editor-wrap" id="deploy-editor-wrap">
+                <div id="app-spec-editor" class="monaco-editor-host" aria-label="YAML spec editor"></div>
+                <textarea
+                  id="app-spec-yaml-fallback"
+                  class="monaco-fallback-textarea"
+                  spellcheck="false"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  aria-label="YAML spec fallback"
+                ></textarea>
               </div>
-              <span class="form-hint">Clear the editor to restore the example. Tab inserts 2 spaces.</span>
+              <textarea id="app-spec-yaml" style="display:none;" aria-hidden="true"></textarea>
             </div>
             <div class="deploy-form-action" style="display:flex;justify-content:flex-end;">
               <button type="submit">Deploy to Peer</button>
@@ -94,4 +99,16 @@
   </section>
 
 </section>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/setup-vscode-editor.js') }}"></script>
+<script src="https://unpkg.com/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  (function () {
+    if (!window.PorpulsionPages || !window.PorpulsionPages.initDeploySpecEditor) return;
+    window.PorpulsionPages.initDeploySpecEditor();
+  })();
+</script>
 {% endblock %}

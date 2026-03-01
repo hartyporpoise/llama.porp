@@ -15,6 +15,21 @@
 
   function el(id) { return document.getElementById(id); }
 
+  function initDeploySpecEditor() {
+    if (window.PorpulsionVscodeEditor && typeof window.PorpulsionVscodeEditor.initDeploySpecEditor === 'function') {
+      window.PorpulsionVscodeEditor.initDeploySpecEditor();
+    }
+  }
+
+  function setDeploySpecValue(nextValue) {
+    if (window.PorpulsionVscodeEditor && typeof window.PorpulsionVscodeEditor.setDeploySpecValue === 'function') {
+      window.PorpulsionVscodeEditor.setDeploySpecValue(nextValue);
+    } else {
+      var yamlEl = el('app-spec-yaml');
+      if (yamlEl) yamlEl.value = nextValue;
+    }
+  }
+
   function renderOverviewPeers(peers) {
     var body = el('overview-peers-body');
     var empty = el('overview-peers-empty');
@@ -407,7 +422,7 @@
       P.createRemoteApp({ name: name, spec: spec }).then(function () {
         toast('Deployed ' + name, 'ok');
         if (nameEl) nameEl.value = '';
-        if (yamlEl) yamlEl.value = 'image: nginx:latest\nreplicas: 1\nports:\n  - port: 80\n    name: http';
+        setDeploySpecValue(window.PorpulsionVscodeEditor && window.PorpulsionVscodeEditor.getDefaultDeploySpec ? window.PorpulsionVscodeEditor.getDefaultDeploySpec() : 'image: nginx:latest\nreplicas: 1\nports:\n  - port: 80\n    name: http');
         setTimeout(refresh, 500);
       }).catch(function (err) {
         if (err.message && err.message.indexOf('inbound') !== -1) toast('Remote agent has inbound workloads disabled — enable in peer Settings', 'warn');
@@ -521,6 +536,7 @@
     closeAppModal: closeAppModal,
     deleteApp: deleteApp,
     removePeer: removePeer,
+    initDeploySpecEditor: initDeploySpecEditor,
     parseSimpleYaml: parseSimpleYaml
   };
 
@@ -598,6 +614,7 @@
   }
 
   refresh();
+  initDeploySpecEditor();
   loadToken();
   loadSettings();
   loadLogs();
