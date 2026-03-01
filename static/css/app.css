@@ -492,7 +492,7 @@ nav a {
   margin-bottom: 4px;
   letter-spacing: 0.00625em;
 }
-nav a .nav-icon { width: 22px; text-align: center; opacity: 0.8; font-size: 1.25rem; }
+nav a .nav-icon { width: 20px; display: flex; align-items: center; justify-content: center; opacity: 0.8; flex-shrink: 0; }
 nav a:hover { background: var(--surface2); color: var(--text); }
 nav a.active { background: var(--accent-glow); color: var(--accent); }
 nav a.active .nav-icon { opacity: 1; }
