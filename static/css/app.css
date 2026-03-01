@@ -1753,7 +1753,7 @@ select { display: none; }
   padding: 0.65rem 0.85rem;
   color: var(--text);
   width: 100%;
-  min-height: 160px;
+  min-height: 80px;
   resize: vertical;
   line-height: 1.55;
   outline: none;
