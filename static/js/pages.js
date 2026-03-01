@@ -998,9 +998,7 @@
           '<div class="notif-msg">' + _esc(n.message) + '</div>' +
           '<div class="notif-ts">' + timeAgo(n.ts) + '</div>' +
         '</div>' +
-        '<button type="button" class="notif-dismiss" data-notif-id="' + _esc(n.id) + '" title="Dismiss">' +
-          '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 1l8 8M9 1l-8 8"/></svg>' +
-        '</button>' +
+        '<button type="button" class="notif-dismiss" data-notif-id="' + _esc(n.id) + '" title="Dismiss" aria-label="Dismiss">&#x2715;</button>' +
       '</div>';
     }).join('');
   }
