@@ -63,6 +63,24 @@ class _SimpleWsSendAdapter:
         except Exception:
             pass
 
+def _emit_version_mismatch(peer_name: str, peer_ver: str):
+    try:
+        from porpulsion import state as _state
+        from porpulsion.notifications import add_notification
+        add_notification(
+            level="warn",
+            title=f"Version mismatch with {peer_name}",
+            message=(
+                f"Local: {_state.VERSION_HASH[:8]}  \u2502  {peer_name}: {peer_ver[:8]}. "
+                "Some features may not work correctly."
+            ),
+        )
+        log.warning("Version mismatch with peer %s (local=%s peer=%s)",
+                    peer_name, _state.VERSION_HASH[:8], peer_ver[:8])
+    except Exception as exc:
+        log.debug("Could not emit version mismatch notification: %s", exc)
+
+
 _CONNECT_TIMEOUT = 5      # seconds for WS handshake
 _RECV_TIMEOUT    = 30     # seconds before treating connection as dead
 _RECONNECT_DELAY = (2, 4, 8, 16, 30)   # backoff steps in seconds
@@ -85,6 +103,7 @@ class PeerChannel:
         self.peer_name = peer_name
         self.peer_url  = peer_url   # peer's public URL — WS connects here
         self.ca_pem    = ca_pem
+        self.peer_version_hash: str = ""   # set when peer announces its version
         self._ws: websocket.WebSocket | None = None
         self._lock     = threading.Lock()
         self._pending: dict[str, dict] = {}   # id -> {"event": Event, "result": dict|None}
@@ -149,6 +168,13 @@ class PeerChannel:
         with self._lock:
             self._ws = _SimpleWsSendAdapter(sock)
         self.connected_event.set()
+
+        # Announce our version so the peer can detect mismatches
+        try:
+            from porpulsion import state as _state
+            self.push("version/announce", {"version": _state.VERSION_HASH})
+        except Exception:
+            pass
 
         # Start keepalive ping thread (same as outbound side)
         threading.Thread(target=self._ping_loop, daemon=True).start()
@@ -216,6 +242,13 @@ class PeerChannel:
             self._ws = ws
         self.connected_event.set()
         log.info("WebSocket channel connected to %s", self.peer_name)
+
+        # Announce our version so the peer can detect mismatches
+        try:
+            from porpulsion import state as _state
+            self.push("version/announce", {"version": _state.VERSION_HASH})
+        except Exception:
+            pass
 
         # Start keepalive ping thread
         threading.Thread(target=self._ping_loop, daemon=True).start()
@@ -330,6 +363,14 @@ class PeerChannel:
 
         # Fire-and-forget push
         if msg_type == "ping":
+            return
+        if msg_type == "version/announce":
+            peer_ver = payload.get("version", "")
+            self.peer_version_hash = peer_ver
+            if peer_ver:
+                from porpulsion import state as _state
+                if _state.VERSION_HASH and peer_ver != _state.VERSION_HASH:
+                    _emit_version_mismatch(self.peer_name, peer_ver)
             return
         handler = self._handlers.get(msg_type)
         if handler:

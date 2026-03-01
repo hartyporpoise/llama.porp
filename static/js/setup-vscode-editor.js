@@ -201,10 +201,117 @@
     });
   }
 
+  // ── Modal spec editor (used in app detail modal Spec tab) ──────
+  var _modalSpecEditors = {}; // keyed by hostId
+
+  function _ensureMonacoLoaded(callback) {
+    if (window.monaco) { callback(window.monaco); return; }
+    if (window.require && window.require.config) {
+      window.require.config({ paths: { vs: 'https://unpkg.com/monaco-editor@0.52.2/min/vs' } });
+      window.require(['vs/editor/editor.main'], function () {
+        callback(window.monaco);
+      }, function () { callback(null); });
+      return;
+    }
+    // Lazily load Monaco loader script
+    var s = document.createElement('script');
+    s.src = 'https://unpkg.com/monaco-editor@0.52.2/min/vs/loader.js';
+    s.onload = function () {
+      window.require.config({ paths: { vs: 'https://unpkg.com/monaco-editor@0.52.2/min/vs' } });
+      window.require(['vs/editor/editor.main'], function () {
+        callback(window.monaco);
+      }, function () { callback(null); });
+    };
+    s.onerror = function () { callback(null); };
+    document.head.appendChild(s);
+  }
+
+  function initModalSpecEditor(hostId, fallbackId, initialValue, onChange) {
+    var hostEl = el(hostId);
+    var fallbackEl = el(fallbackId);
+    if (!hostEl && !fallbackEl) return;
+
+    // If already created for this host, just update value
+    if (_modalSpecEditors[hostId]) {
+      _modalSpecEditors[hostId].setValue(initialValue || '');
+      return;
+    }
+
+    // Show fallback immediately
+    if (fallbackEl) { fallbackEl.style.display = 'block'; fallbackEl.value = initialValue || ''; }
+    if (hostEl) hostEl.style.display = 'none';
+
+    // Bind fallback onChange
+    if (fallbackEl && onChange && !fallbackEl._modalEditorBound) {
+      fallbackEl._modalEditorBound = true;
+      fallbackEl.addEventListener('input', function () { onChange(fallbackEl.value); });
+    }
+
+    _ensureMonacoLoaded(function (monaco) {
+      if (!monaco || !hostEl) {
+        if (onChange && fallbackEl) fallbackEl.addEventListener('input', function () { onChange(fallbackEl.value); });
+        return;
+      }
+      // Re-check el still in DOM (modal may have been closed)
+      if (!document.body.contains(hostEl)) return;
+
+      registerYamlHints(monaco, '/api/openapi.json');
+      var theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark';
+      var editor = monaco.editor.create(hostEl, {
+        value: initialValue || '',
+        language: 'yaml',
+        theme: theme,
+        minimap: { enabled: false },
+        automaticLayout: true,
+        scrollBeyondLastLine: false,
+        wordWrap: 'on',
+        tabSize: 2,
+        insertSpaces: true,
+        detectIndentation: false,
+        lineNumbers: 'off',
+        folding: false,
+        glyphMargin: false,
+        quickSuggestions: true
+      });
+      _modalSpecEditors[hostId] = editor;
+      if (onChange) {
+        editor.onDidChangeModelContent(function () { onChange(editor.getValue()); });
+      }
+      hostEl.style.display = 'block';
+      if (fallbackEl) fallbackEl.style.display = 'none';
+
+      // Theme observer
+      if (window.MutationObserver) {
+        var obs = new MutationObserver(function () {
+          if (window.monaco && editor) {
+            window.monaco.editor.setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark');
+          }
+        });
+        obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+      }
+    });
+  }
+
+  function disposeModalSpecEditor(hostId) {
+    if (_modalSpecEditors[hostId]) {
+      _modalSpecEditors[hostId].dispose();
+      delete _modalSpecEditors[hostId];
+    }
+  }
+
+  function getModalSpecEditorValue(hostId, fallbackId) {
+    if (_modalSpecEditors[hostId]) return _modalSpecEditors[hostId].getValue();
+    var fallbackEl = el(fallbackId);
+    return fallbackEl ? fallbackEl.value : '';
+  }
+
   window.PorpulsionVscodeEditor = {
     initDeploySpecEditor: initDeploySpecEditor,
     setDeploySpecValue: setDeploySpecValue,
     getDefaultDeploySpec: function () { return DEFAULT_DEPLOY_SPEC; },
-    registerYamlHints: registerYamlHints
+    registerYamlHints: registerYamlHints,
+    initModalSpecEditor: initModalSpecEditor,
+    disposeModalSpecEditor: disposeModalSpecEditor,
+    getModalSpecEditorValue: getModalSpecEditorValue
   };
 })();

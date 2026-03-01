@@ -180,7 +180,14 @@ def create_remoteapp():
     if not state.peers:
         return jsonify({"error": "no peers connected"}), 503
 
-    peer = next(iter(state.peers.values()))
+    target_peer_name = data.get("target_peer", "")
+    if target_peer_name:
+        peer = state.peers.get(target_peer_name)
+        if not peer:
+            return jsonify({"error": f"peer '{target_peer_name}' not found or not connected"}), 400
+    else:
+        peer = next(iter(state.peers.values()))
+
     ra = RemoteApp(name=data["name"], spec=RemoteAppSpec.from_dict(data.get("spec", {})),
                    source_peer=state.AGENT_NAME, target_peer=peer.name)
     state.local_apps[ra.id] = ra

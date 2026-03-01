@@ -22,6 +22,12 @@
       }
       setTheme();
       if (mq) mq.addEventListener('change', setTheme);
+      // Pre-apply sidebar-collapsed before first paint to avoid layout flash
+      if (window.innerWidth >= 768 && localStorage.getItem('sidebar-collapsed') === '1') {
+        document.documentElement.classList.add('sidebar-collapsed');
+      }
+      // Suppress transitions on load so collapsed state applies instantly
+      document.documentElement.classList.add('no-transition');
     })();
   </script>
   <!-- LAYOUT: app root (mobile-first: sidebar drawer, then main) -->
@@ -42,46 +48,65 @@
         <div class="sidebar-agent-label">Agent</div>
         <div class="sidebar-agent-name">
           <span class="health-dot" id="health-dot"></span>
-          {{ agent_name }}
+          <span class="sidebar-agent-text">{{ agent_name }}</span>
         </div>
       </div>
       <nav id="nav">
-        <a href="/" class="{% if request.endpoint == 'ui.index' %}active{% endif %}">
-          <span class="nav-icon" aria-hidden="true">&#9670;</span> Overview
+        <a href="/" class="{% if request.endpoint == 'ui.index' %}active{% endif %}" title="Overview">
+          <span class="nav-icon" aria-hidden="true">&#9670;</span><span class="nav-text"> Overview</span>
         </a>
-        <a href="/peers" class="{% if request.endpoint == 'ui.peers' %}active{% endif %}">
-          <span class="nav-icon" aria-hidden="true">&#8644;</span> Peers
+        <a href="/peers" class="{% if request.endpoint == 'ui.peers' %}active{% endif %}" title="Peers">
+          <span class="nav-icon" aria-hidden="true">&#8644;</span><span class="nav-text"> Peers</span>
           <span class="nav-badge" id="nav-inbound-badge" style="display: none">!</span>
         </a>
-        <a href="/workloads" class="{% if request.endpoint == 'ui.workloads' %}active{% endif %}">
-          <span class="nav-icon" aria-hidden="true">&#11041;</span> Workloads
+        <a href="/workloads" class="{% if request.endpoint == 'ui.workloads' %}active{% endif %}" title="Workloads">
+          <span class="nav-icon" aria-hidden="true">&#11041;</span><span class="nav-text"> Workloads</span>
           <span class="nav-badge" id="nav-approval-badge" style="display: none">!</span>
         </a>
-        <a href="/tunnels" class="{% if request.endpoint == 'ui.tunnels' %}active{% endif %}">
-          <span class="nav-icon" aria-hidden="true">&#8658;</span> Proxy
+        <a href="/tunnels" class="{% if request.endpoint == 'ui.tunnels' %}active{% endif %}" title="Proxy">
+          <span class="nav-icon" aria-hidden="true">&#8658;</span><span class="nav-text"> Proxy</span>
         </a>
-        <a href="/logs" class="{% if request.endpoint == 'ui.logs' %}active{% endif %}">
-          <span class="nav-icon" aria-hidden="true">&#9776;</span> Logs
+        <a href="/settings" class="{% if request.endpoint == 'ui.settings' %}active{% endif %}" title="Settings">
+          <span class="nav-icon" aria-hidden="true">&#9881;</span><span class="nav-text"> Settings</span>
         </a>
-        <a href="/settings" class="{% if request.endpoint == 'ui.settings' %}active{% endif %}">
-          <span class="nav-icon" aria-hidden="true">&#9881;</span> Settings
-        </a>
-        <a href="/docs" class="{% if request.endpoint == 'ui.docs' %}active{% endif %}">
-          <span class="nav-icon" aria-hidden="true">&#9675;</span> Docs
+        <a href="/docs" class="{% if request.endpoint == 'ui.docs' %}active{% endif %}" title="Docs">
+          <span class="nav-icon" aria-hidden="true">&#9675;</span><span class="nav-text"> Docs</span>
         </a>
       </nav>
       <div class="sidebar-footer">
-        <div>Updated <span id="last-refresh">—</span></div>
+        <div class="sidebar-footer-main">
+          <span class="sidebar-footer-text">Updated <span id="last-refresh">—</span></span>
+        </div>
+        <!-- Desktop: collapse button at bottom of sidebar -->
+        <button type="button" class="sidebar-collapse-btn" id="sidebar-collapse-btn" aria-label="Collapse sidebar">
+          <svg class="collapse-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
       </div>
     </aside>
     <!-- LAYOUT: main content area -->
     <main class="main">
       <div class="topbar">
+        <!-- Mobile only: hamburger to open drawer -->
         <button type="button" class="menu-btn" id="menu-btn" aria-label="Open menu">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
         </button>
         <span class="topbar-title" id="topbar-title">{% block topbar_title %}Overview{% endblock %}</span>
-        <div class="topbar-meta">
+        <div class="topbar-right">
+          <div class="notif-wrap" id="notif-wrap">
+            <button type="button" class="notif-bell" id="notif-bell" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              <span class="notif-badge" id="notif-badge" style="display:none;">0</span>
+            </button>
+            <div class="notif-panel" id="notif-panel" hidden>
+              <div class="notif-panel-header">
+                <span class="notif-panel-title">Notifications</span>
+                <button type="button" class="btn-sm btn-outline" id="notif-clear-btn">Clear all</button>
+              </div>
+              <div class="notif-list" id="notif-list">
+                <div class="notif-empty">No notifications</div>
+              </div>
+            </div>
+          </div>
           <span id="peer-count-label">0 peers</span>
         </div>
       </div>
@@ -98,7 +123,7 @@
     <div class="modal-inner">
       <div class="modal-header">
         <span class="modal-title" id="app-modal-title">App Detail</span>
-        <button type="button" class="modal-close" id="app-modal-close">&#215;</button>
+        <button type="button" class="modal-close" id="app-modal-close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 1l12 12M13 1L1 13"/></svg></button>
       </div>
       <div class="modal-body" id="app-modal-body"></div>
     </div>
@@ -109,7 +134,7 @@
     <div class="modal-inner">
       <div class="modal-header">
         <span class="modal-title" id="pod-logs-title">Pod Logs</span>
-        <button type="button" class="modal-close" id="pod-logs-close">&#215;</button>
+        <button type="button" class="modal-close" id="pod-logs-close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 1l12 12M13 1L1 13"/></svg></button>
       </div>
       <div class="modal-body" id="pod-logs-body" style="flex:1;min-height:0;overflow:auto;">
         <pre id="pod-logs-content" class="logs-content" style="margin:0;padding:0.75rem 1rem;">Loading…</pre>
@@ -131,24 +156,63 @@
   <script src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js" defer></script>
   <script src="{{ url_for('static', filename='js/api.js') }}"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/setup-vscode-editor.js') }}"></script>
   <script src="{{ url_for('static', filename='js/pages.js') }}"></script>
   <script>
-    document.getElementById('menu-btn').addEventListener('click', function() {
-      document.getElementById('sidebar').classList.add('open');
-      document.getElementById('sidebar-overlay').classList.add('open');
+    var _html = document.documentElement;
+    var _appRoot = document.querySelector('.app-root');
+    var _sidebar = document.getElementById('sidebar');
+    var _overlay = document.getElementById('sidebar-overlay');
+    // Sync app-root from html class (already set in <head> to avoid flash)
+    if (_html.classList.contains('sidebar-collapsed')) {
+      _appRoot.classList.add('sidebar-collapsed');
+    }
+    // Re-enable transitions after first paint
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        _html.classList.remove('no-transition');
+      });
     });
-    document.getElementById('sidebar-overlay').addEventListener('click', function() {
-      document.getElementById('sidebar').classList.remove('open');
-      this.classList.remove('open');
+
+    function _setCollapsed(collapsed) {
+      if (collapsed) {
+        _html.classList.add('sidebar-collapsed');
+        _appRoot.classList.add('sidebar-collapsed');
+      } else {
+        _html.classList.remove('sidebar-collapsed');
+        _appRoot.classList.remove('sidebar-collapsed');
+      }
+      localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
+    }
+
+    // Mobile hamburger: opens drawer
+    document.getElementById('menu-btn').addEventListener('click', function() {
+      _sidebar.classList.add('open');
+      _overlay.classList.add('open');
+    });
+
+    // Desktop collapse button at bottom of sidebar
+    var _collapseBtn = document.getElementById('sidebar-collapse-btn');
+    if (_collapseBtn) {
+      _collapseBtn.addEventListener('click', function() {
+        _setCollapsed(!_appRoot.classList.contains('sidebar-collapsed'));
+      });
+    }
+
+    _overlay.addEventListener('click', function() {
+      _sidebar.classList.remove('open');
+      _overlay.classList.remove('open');
     });
     document.getElementById('sidebar-close').addEventListener('click', function() {
-      document.getElementById('sidebar').classList.remove('open');
-      document.getElementById('sidebar-overlay').classList.remove('open');
+      _sidebar.classList.remove('open');
+      _overlay.classList.remove('open');
     });
     document.querySelectorAll('#nav a').forEach(function(a) {
       a.addEventListener('click', function() {
-        document.getElementById('sidebar').classList.remove('open');
-        document.getElementById('sidebar-overlay').classList.remove('open');
+        if (window.innerWidth < 768) {
+          _sidebar.classList.remove('open');
+          _overlay.classList.remove('open');
+        }
       });
     });
   </script>

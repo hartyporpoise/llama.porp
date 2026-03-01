@@ -76,6 +76,11 @@
     updateAppSpec: function (id, spec) { return putJson(API_BASE + '/remoteapp/' + id + '/spec', { spec: spec }); },
     updateSettings: function (data) { return postJson(API_BASE + '/settings', data); },
 
+    getNotifications: function () { return getJson(API_BASE + '/notifications'); },
+    ackNotification: function (id) { return postJson(API_BASE + '/notifications/' + id + '/ack', {}); },
+    deleteNotification: function (id) { return del(API_BASE + '/notifications/' + id); },
+    clearNotifications: function () { return del(API_BASE + '/notifications'); },
+
     getLogs: function (tail) { return getJson(API_BASE + '/logs' + (tail ? '?tail=' + tail : '')); },
     getAppLogs: function (appId, tail, order) {
       return getJson(API_BASE + '/remoteapp/' + encodeURIComponent(appId) + '/logs?tail=' + (tail || 200) + '&order=' + (order || 'pod'));

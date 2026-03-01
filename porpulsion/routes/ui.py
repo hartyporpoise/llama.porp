@@ -34,11 +34,6 @@ def tunnels():
     return render_template("ui/tunnels.html", **_context())
 
 
-@bp.route("/logs")
-def logs():
-    return render_template("ui/logs.html", **_context())
-
-
 @bp.route("/settings")
 def settings():
     return render_template("ui/settings.html", **_context())

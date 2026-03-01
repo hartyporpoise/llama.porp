@@ -15,6 +15,10 @@
 
   function el(id) { return document.getElementById(id); }
 
+  // Cache of last-fetched workloads for use in confirmation dialogs
+  var _lastSubmitted = [];
+  var _lastExecuting = [];
+
   function initDeploySpecEditor() {
     if (window.PorpulsionVscodeEditor && typeof window.PorpulsionVscodeEditor.initDeploySpecEditor === 'function') {
       window.PorpulsionVscodeEditor.initDeploySpecEditor();
@@ -27,6 +31,28 @@
     } else {
       var yamlEl = el('app-spec-yaml');
       if (yamlEl) yamlEl.value = nextValue;
+    }
+  }
+
+  function populateTargetPeerSelect(peers) {
+    var sel = el('app-target-peer');
+    if (!sel) return;
+    var connected = peers.filter(function (p) { return !p.status || p.status === 'connected'; });
+    var prev = sel.value;
+    // Placeholder option — value="" so form validation can catch it
+    sel.innerHTML = '<option value="" disabled hidden>— select peer —</option>';
+    connected.forEach(function (p) {
+      var opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+    // Restore previous selection if still valid
+    if (prev && connected.some(function (p) { return p.name === prev; })) {
+      sel.value = prev;
+    } else if (connected.length === 1) {
+      // Auto-select when exactly one peer is connected
+      sel.value = connected[0].name;
     }
   }
 
@@ -61,7 +87,10 @@
       var status = p.status || 'connected';
       var statusCls = status === 'connected' ? 'badge-mtls' : status === 'connecting' ? 'badge-connecting' : status === 'awaiting_confirmation' ? 'badge-handshake' : 'badge-failed';
       var statusHtml = '<span class="badge ' + statusCls + '">' + (status === 'connected' ? '<span class="badge-dot"></span>' : '') + status + '</span>';
-      var chanHtml = (p.channel === 'connected') ? '<span class="badge badge-mtls"><span class="badge-dot"></span>live</span>' : '<span class="badge badge-pending">—</span>';
+      var chEncrypted = (p.url || '').indexOf('https://') === 0;
+      var chanHtml = (p.channel === 'connected')
+        ? (chEncrypted ? '<span class="badge badge-mtls"><span class="badge-dot"></span>live</span>' : '<span class="badge badge-warn"><span class="badge-dot"></span>live</span>')
+        : '<span class="badge badge-pending">—</span>';
       var actions = '';
       if (status === 'connecting') actions = '<button class="btn-sm peer-cancel-btn">Cancel</button>';
       else if (status === 'failed' || status === 'awaiting_confirmation') actions = '<button class="btn-sm peer-retry-btn">Retry</button>';
@@ -117,7 +146,7 @@
     if (empty) empty.style.display = 'none';
     body.innerHTML = all.map(function (a) {
       var typeLabel = a._type === 'submitted' ? '<span class="badge badge-handshake" style="font-size:0.65rem;">outbound</span>' : '<span class="badge badge-inbound" style="font-size:0.65rem;">inbound</span>';
-      return '<tr data-app-id="' + _esc(a.id) + '" data-app-name="' + _esc(a.name) + '">' +
+      return '<tr data-app-id="' + _esc(a.id) + '" data-app-name="' + _esc(a.name) + '" data-app-type="' + a._type + '">' +
         '<td><a href="#" class="app-open-link">' + _esc(a.name) + '</a></td>' +
         '<td>' + typeLabel + '</td><td>' + statusBadge(a.status) + '</td>' +
         '<td class="time-ago">' + timeAgo(a.updated_at) + '</td>' +
@@ -125,7 +154,7 @@
     }).join('');
   }
 
-  function renderApps(list, bodyId, emptyId, countId, showSource) {
+  function renderApps(list, bodyId, emptyId, countId, showSource, appType) {
     var body = el(bodyId);
     if (!body) return;
     var empty = el(emptyId);
@@ -134,10 +163,11 @@
     if (!list.length) { body.innerHTML = ''; if (empty) empty.style.display = ''; return; }
     if (empty) empty.style.display = 'none';
     var peerKey = showSource ? 'source_peer' : 'target_peer';
+    var typeAttr = appType ? ' data-app-type="' + appType + '"' : '';
     body.innerHTML = list.map(function (a) {
       var isDead = a.status === 'Deleted' || a.status === 'Failed' || a.status === 'Timeout';
       var peerVal = a[peerKey] || '—';
-      return '<tr' + (isDead ? ' style="opacity:0.55;"' : '') + ' data-app-id="' + _esc(a.id) + '" data-app-name="' + _esc(a.name) + '">' +
+      return '<tr' + (isDead ? ' style="opacity:0.55;"' : '') + ' data-app-id="' + _esc(a.id) + '" data-app-name="' + _esc(a.name) + '"' + typeAttr + '>' +
         '<td><a href="#" class="app-open-link">' + _esc(a.name) + '</a></td>' +
         '<td class="mono">' + _esc(a.id) + '</td><td>' + statusBadge(a.status) + '</td>' +
         '<td class="text-muted text-sm">' + _esc(peerVal) + '</td>' +
@@ -167,9 +197,13 @@
           '<button type="button" class="btn-sm" data-copy-el="' + id + '">Copy</button></div>';
       }).join('');
       return '<div style="padding:0.75rem 0;border-bottom:1px solid var(--border);">' +
-        '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">' +
-        '<strong style="font-size:0.845rem;">' + _esc(a.name) + '</strong>' + statusBadge(a.status) +
-        '<span class="text-muted text-sm" style="margin-left:auto;">' + _esc(a.target_peer || '') + '</span></div>' + portLinks + '</div>';
+        '<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.4rem;">' +
+        '<strong style="font-size:0.845rem;">' + _esc(a.name) + '</strong>' +
+        '<span class="mono" style="font-size:0.7rem;color:var(--muted2);">' + _esc(a.id) + '</span>' +
+        statusBadge(a.status) +
+        '<span class="text-muted text-sm" style="margin-left:auto;">' + _esc(a.target_peer || '') + '</span>' +
+        '<button type="button" class="btn-sm app-detail-btn" data-app-id="' + _esc(a.id) + '" style="margin-left:0;">Detail</button>' +
+        '</div>' + portLinks + '</div>';
     }).join('');
   }
 
@@ -206,6 +240,7 @@
   }
 
   function refresh() {
+    P.getNotifications().then(renderNotifications).catch(function () {});
     Promise.all([
       P.getPeers(),
       P.getRemoteApps(),
@@ -218,6 +253,8 @@
       var approval = results[3];
       var submitted = apps.submitted || [];
       var executing = apps.executing || [];
+      _lastSubmitted = submitted;
+      _lastExecuting = executing;
       var connected = peers.filter(function (p) { return !p.status || (p.status !== 'connecting' && p.status !== 'awaiting_confirmation' && p.status !== 'failed'); });
 
       var statPeers = el('stat-peers');
@@ -240,11 +277,13 @@
 
       renderOverviewPeers(peers);
       renderAllPeers(peers);
+      populateTargetPeerSelect(peers);
+      _syncTunnelPeersFromData(peers, executing);
       renderInbound(inbound);
       renderApproval(approval);
       renderRecentApps(submitted, executing);
-      renderApps(submitted, 'submitted-body', 'submitted-empty', 'submitted-count', false);
-      renderApps(executing, 'executing-body', 'executing-empty', 'executing-count', true);
+      renderApps(submitted, 'submitted-body', 'submitted-empty', 'submitted-count', false, 'submitted');
+      renderApps(executing, 'executing-body', 'executing-empty', 'executing-count', true, 'executing');
       renderProxyApps(submitted);
 
       var healthDot = el('health-dot');
@@ -292,15 +331,182 @@
       toast('Saved', 'ok');
     }).catch(function (err) { toast(err.message, 'error'); });
   }
-  function saveInboundTunnels(enabled) {
-    saveSetting('allow_inbound_tunnels', enabled);
+  // ── Tunnel peer allowlist state ────────────────────────────────
+  // _tunnelState.denied: Set of denied entries (peer names or "peer/app-id")
+  // Empty denied set = all allowed (default). We track denials so "all on by default" is intuitive.
+  var _tunnelState = {
+    expanded: {}, // keyed by peer name, true if app list is open
+    peers: [],      // [{name, apps:[{id,name}]}] from last refresh
+    denied: {}      // {peer: true} or {"peer/appid": true}
+  };
+
+  function _tunnelIsDenied(key) {
+    return !!_tunnelState.denied[key];
+  }
+
+  function _tunnelSetDenied(key, denied) {
+    if (denied) _tunnelState.denied[key] = true;
+    else delete _tunnelState.denied[key];
+  }
+
+  function _renderTunnelPeerList() {
+    var list = el('tunnel-peer-list');
+    var empty = el('tunnel-peer-empty');
+    if (!list) return;
+    if (!_tunnelState.peers.length) {
+      if (empty) empty.style.display = '';
+      list.querySelectorAll('.tunnel-peer-row').forEach(function (r) { r.remove(); });
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    // Re-render all peer rows
+    list.querySelectorAll('.tunnel-peer-row').forEach(function (r) { r.remove(); });
+    _tunnelState.peers.forEach(function (peer) {
+      var peerDenied = _tunnelIsDenied(peer.name);
+      var row = document.createElement('div');
+      row.className = 'tunnel-peer-row';
+      row.dataset.peer = peer.name;
+      // Peer header row
+      var apps = peer.apps || [];
+      var hasApps = apps.length > 0;
+      var isExpanded = !!_tunnelState.expanded[peer.name];
+      var header = '<div class="tunnel-peer-header' + (hasApps ? ' has-apps' : '') + '"' + (hasApps ? ' role="button" tabindex="0" aria-expanded="' + (isExpanded ? 'true' : 'false') + '" title="Click to show/hide apps"' : '') + '>' +
+        '<label class="toggle tunnel-peer-toggle" title="' + (peerDenied ? 'Enable' : 'Disable') + ' all tunnels from ' + _esc(peer.name) + '" onclick="event.stopPropagation()">' +
+          '<input type="checkbox" class="tunnel-peer-chk" data-peer="' + _esc(peer.name) + '"' + (peerDenied ? '' : ' checked') + '>' +
+          '<span class="toggle-slider"></span>' +
+        '</label>' +
+        '<span class="tunnel-peer-name">' + _esc(peer.name) + '</span>' +
+        (hasApps ? '<span class="tunnel-app-count">' + apps.length + ' app' + (apps.length !== 1 ? 's' : '') + '</span>' : '<span class="tunnel-app-count">no apps running</span>') +
+        (hasApps ? '<svg class="tunnel-peer-chevron" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="' + (isExpanded ? 'transform:rotate(180deg)' : '') + '"><path d="M3 5l4 4 4-4"/></svg>' : '') +
+      '</div>';
+      // App sub-rows — restore expanded state from _tunnelState.expanded
+      var appRows = hasApps ? '<div class="tunnel-app-list"' + (isExpanded ? '' : ' style="display:none;"') + '>' +
+        apps.map(function (app) {
+          var appKey = peer.name + '/' + app.id;
+          var appDenied = _tunnelIsDenied(appKey) || peerDenied;
+          return '<div class="tunnel-app-row">' +
+            '<label class="toggle tunnel-app-toggle" title="' + (appDenied ? 'Enable' : 'Disable') + ' tunnels for ' + _esc(app.name || app.id) + '">' +
+              '<input type="checkbox" class="tunnel-app-chk" data-peer="' + _esc(peer.name) + '" data-app-id="' + _esc(app.id) + '"' + (appDenied ? '' : ' checked') + (peerDenied ? ' disabled' : '') + '>' +
+              '<span class="toggle-slider"></span>' +
+            '</label>' +
+            '<span class="tunnel-app-name">' + _esc(app.name || app.id) + '</span>' +
+            '<span class="tunnel-app-id">' + _esc(app.id) + '</span>' +
+          '</div>';
+        }).join('') +
+      '</div>' : '';
+      row.innerHTML = header + appRows;
+      list.appendChild(row);
+    });
+    // Bind events on new rows
+    list.querySelectorAll('.tunnel-peer-chk').forEach(function (chk) {
+      chk.addEventListener('change', function () {
+        var peerName = chk.dataset.peer;
+        _tunnelSetDenied(peerName, !chk.checked);
+        // Sync app checkboxes
+        var appChks = list.querySelectorAll('.tunnel-app-chk[data-peer="' + peerName + '"]');
+        appChks.forEach(function (ac) { ac.disabled = !chk.checked; if (!chk.checked) ac.checked = false; else ac.checked = !_tunnelIsDenied(peerName + '/' + ac.dataset.appId); });
+      });
+    });
+    list.querySelectorAll('.tunnel-app-chk').forEach(function (chk) {
+      chk.addEventListener('change', function () {
+        var appKey = chk.dataset.peer + '/' + chk.dataset.appId;
+        _tunnelSetDenied(appKey, !chk.checked);
+      });
+    });
+    // Click on .has-apps header to expand/collapse app list
+    list.querySelectorAll('.tunnel-peer-header.has-apps').forEach(function (header) {
+      function toggleExpand() {
+        var row = header.closest('.tunnel-peer-row');
+        var appList = row ? row.querySelector('.tunnel-app-list') : null;
+        if (!appList) return;
+        var open = appList.style.display !== 'none';
+        appList.style.display = open ? 'none' : '';
+        header.setAttribute('aria-expanded', open ? 'false' : 'true');
+        var chevron = header.querySelector('.tunnel-peer-chevron');
+        if (chevron) chevron.style.transform = open ? '' : 'rotate(180deg)';
+        // Persist expanded state so re-renders don't collapse it
+        var peerRow = header.closest('.tunnel-peer-row');
+        var peerName = peerRow ? peerRow.dataset.peer : null;
+        if (peerName) _tunnelState.expanded[peerName] = !open;
+      }
+      header.addEventListener('click', function (e) {
+        if (e.target.closest('.tunnel-peer-toggle')) return; // don't expand when clicking toggle
+        toggleExpand();
+      });
+      header.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleExpand(); }
+      });
+    });
+  }
+
+  function _syncTunnelPeersFromData(peers, executing) {
+    // Build peer+app map from connected peers and their executing apps on this cluster
+    var connected = peers.filter(function (p) { return !p.status || p.status === 'connected'; });
+    _tunnelState.peers = connected.map(function (peer) {
+      var peerApps = (executing || []).filter(function (a) { return a.source_peer === peer.name; })
+        .map(function (a) { return { id: a.id, name: a.name }; });
+      return { name: peer.name, apps: peerApps };
+    });
+    _renderTunnelPeerList();
+  }
+
+  function _loadTunnelDeniedFromValue(allowedStr) {
+    // allowedStr is comma-sep allowed list. Empty = all allowed (no denied).
+    // If set, anything NOT in the list is denied.
+    // We convert: denied = all peers - allowed
+    _tunnelState.denied = {};
+    var entries = (allowedStr || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!entries.length) return; // all allowed
+    // Build a set of allowed entries
+    var allowedSet = {};
+    entries.forEach(function (e) { allowedSet[e] = true; });
+    // For each known peer, check if denied
+    _tunnelState.peers.forEach(function (peer) {
+      if (!allowedSet[peer.name]) {
+        // Check if any specific app entries allow this peer
+        var hasAppEntry = entries.some(function (e) { return e.indexOf(peer.name + '/') === 0; });
+        if (!hasAppEntry) {
+          _tunnelSetDenied(peer.name, true);
+        } else {
+          // Peer-level allowed via app entries; check which apps are denied
+          (peer.apps || []).forEach(function (app) {
+            var appKey = peer.name + '/' + app.id;
+            if (!allowedSet[appKey] && !allowedSet[peer.name]) {
+              _tunnelSetDenied(appKey, true);
+            }
+          });
+        }
+      }
+    });
+    _renderTunnelPeerList();
+  }
+
+  function _getTunnelAllowedValue() {
+    // Convert denied state back to allowed list format
+    // If nothing denied, return '' (all allowed)
+    if (!Object.keys(_tunnelState.denied).length) return '';
+    var allowed = [];
+    _tunnelState.peers.forEach(function (peer) {
+      if (_tunnelIsDenied(peer.name)) return; // skip fully denied peers
+      // Check if any specific apps are denied for this peer
+      var deniedApps = (peer.apps || []).filter(function (app) { return _tunnelIsDenied(peer.name + '/' + app.id); });
+      if (!deniedApps.length) {
+        allowed.push(peer.name); // all apps allowed
+      } else {
+        // Only push the allowed apps specifically
+        (peer.apps || []).forEach(function (app) {
+          if (!_tunnelIsDenied(peer.name + '/' + app.id)) {
+            allowed.push(peer.name + '/' + app.id);
+          }
+        });
+      }
+    });
+    return allowed.join(', ');
   }
 
   function loadSettings() {
     var logLevelCtrl = el('setting-log-level');
     var inboundApps = el('setting-inbound-apps');
-    var requireApproval = el('setting-require-approval');
-    var inboundTunnels = el('setting-inbound-tunnels');
     if (!logLevelCtrl && !inboundApps) return;
     P.getSettings().then(function (s) {
       var level = (s.log_level || 'INFO').toUpperCase();
@@ -310,65 +516,109 @@
           btns[i].classList.toggle('active', (btns[i].dataset.val || '') === level);
         }
       }
-      if (inboundApps) inboundApps.checked = !!s.allow_inbound_remoteapps;
-      if (requireApproval) requireApproval.checked = !!s.require_remoteapp_approval;
-      if (inboundTunnels) inboundTunnels.checked = !!s.allow_inbound_tunnels;
+      function setChk(id, val) { var e = el(id); if (e) e.checked = !!val; }
+      function setVal(id, val) { var e = el(id); if (e) e.value = (val === 0 || val) ? val : ''; }
+      setChk('setting-inbound-apps',        s.allow_inbound_remoteapps);
+      setChk('setting-require-approval',    s.require_remoteapp_approval);
+      setChk('setting-require-res-requests',s.require_resource_requests);
+      setChk('setting-require-res-limits',  s.require_resource_limits);
+      setChk('setting-inbound-tunnels',     s.allow_inbound_tunnels);
+      setVal('setting-allowed-peers',       s.allowed_source_peers);
+      setVal('setting-allowed-images',      s.allowed_images);
+      setVal('setting-blocked-images',      s.blocked_images);
+      setVal('setting-max-cpu-req',         s.max_cpu_request_per_pod);
+      setVal('setting-max-cpu-lim',         s.max_cpu_limit_per_pod);
+      setVal('setting-max-mem-req',         s.max_memory_request_per_pod);
+      setVal('setting-max-mem-lim',         s.max_memory_limit_per_pod);
+      setVal('setting-max-replicas',        s.max_replicas_per_app || '');
+      setVal('setting-max-total-deploys',   s.max_total_deployments || '');
+      setVal('setting-max-total-pods',      s.max_total_pods || '');
+      setVal('setting-max-total-cpu',       s.max_total_cpu_requests);
+      setVal('setting-max-total-mem',       s.max_total_memory_requests);
+      _loadTunnelDeniedFromValue(s.allowed_tunnel_peers || '');
     }).catch(function () {});
   }
 
-  function loadLogs() {
-    var workloadSelect = el('logs-workload');
-    var content = el('logs-content');
-    var tailSelect = el('logs-tail');
-    var viewSelect = el('logs-view');
-    var refreshBtn = el('logs-refresh');
-    if (!workloadSelect || !content) return;
-    function fetchAndShow() {
-      var appId = workloadSelect.value;
-      if (!appId) { content.textContent = 'Select a workload to view its pod logs.'; return; }
-      var tail = (tailSelect && tailSelect.value) ? parseInt(tailSelect.value, 10) : 200;
-      var order = (viewSelect && viewSelect.value) || 'pod';
-      content.textContent = 'Loading…';
-      P.getAppLogs(appId, tail, order).then(function (d) {
-        var lines = (d && d.lines) ? d.lines : [];
-        var text = lines.map(function (l) {
-          return (l.ts ? l.ts + ' ' : '') + (l.pod ? '[' + l.pod + '] ' : '') + (l.message || '');
-        }).join('\n');
-        if (d && d.error && !lines.length) text = 'Error: ' + d.error + '\n' + text;
-        content.textContent = text || '(no logs)';
-      }).catch(function (err) {
-        content.textContent = 'Error: ' + (err.message || 'Failed to load logs');
-      });
+  // ── Confirm dialog ──────────────────────────────────────────
+  function showConfirm(title, body, okLabel, okClass, callback) {
+    var backdrop = el('dialog-backdrop');
+    var titleEl = el('dialog-title');
+    var bodyEl = el('dialog-body');
+    var actionsEl = el('dialog-actions');
+    if (!backdrop) { callback(); return; }
+    titleEl.textContent = title;
+    bodyEl.textContent = body;
+    actionsEl.innerHTML = '';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.className = 'btn-sm btn-outline';
+    var okBtn = document.createElement('button');
+    okBtn.textContent = okLabel || 'Confirm';
+    okBtn.className = 'btn-sm ' + (okClass || 'btn-danger');
+    function close() { backdrop.classList.remove('open'); }
+    cancelBtn.addEventListener('click', close);
+    okBtn.addEventListener('click', function () { close(); callback(); });
+    backdrop.addEventListener('click', function handler(e) {
+      if (e.target === backdrop) { close(); backdrop.removeEventListener('click', handler); }
+    });
+    actionsEl.appendChild(cancelBtn);
+    actionsEl.appendChild(okBtn);
+    backdrop.classList.add('open');
+    okBtn.focus();
+  }
+
+  function showPeerRemoveConfirm(peerName, callback) {
+    var submittedCount = _lastSubmitted.filter(function (a) { return a.target_peer === peerName; }).length;
+    var executingCount = _lastExecuting.filter(function (a) { return a.source_peer === peerName; }).length;
+
+    var backdrop = el('dialog-backdrop');
+    var titleEl  = el('dialog-title');
+    var bodyEl   = el('dialog-body');
+    var inputEl  = el('dialog-input');
+    var actionsEl = el('dialog-actions');
+    if (!backdrop) { callback(); return; }
+
+    titleEl.textContent = 'Remove peer "' + peerName + '"?';
+
+    var parts = [];
+    if (submittedCount > 0) parts.push(submittedCount + ' submitted workload' + (submittedCount !== 1 ? 's' : ''));
+    if (executingCount > 0) parts.push(executingCount + ' executing workload' + (executingCount !== 1 ? 's' : ''));
+    var workloadMsg = parts.length
+      ? 'This will permanently delete ' + parts.join(' and ') + ' on the peer cluster. This cannot be undone. '
+      : 'No workloads are currently associated with this peer. ';
+    bodyEl.textContent = workloadMsg + 'Type the peer name to confirm.';
+
+    inputEl.value = '';
+    inputEl.placeholder = peerName;
+    inputEl.style.display = '';
+
+    actionsEl.innerHTML = '';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.className = 'btn-sm btn-outline';
+    var okBtn = document.createElement('button');
+    okBtn.textContent = 'Remove peer';
+    okBtn.className = 'btn-sm btn-danger';
+    okBtn.disabled = true;
+
+    function checkInput() { okBtn.disabled = inputEl.value !== peerName; }
+    inputEl.addEventListener('input', checkInput);
+
+    function close() {
+      backdrop.classList.remove('open');
+      inputEl.style.display = 'none';
+      inputEl.value = '';
+      inputEl.removeEventListener('input', checkInput);
     }
-    function populateWorkloads() {
-      P.getRemoteApps().then(function (apps) {
-        var submitted = apps.submitted || [];
-        var executing = apps.executing || [];
-        var all = submitted.concat(executing);
-        var cur = workloadSelect.value;
-        workloadSelect.innerHTML = '<option value="">Select a workload…</option>';
-        all.forEach(function (a) {
-          var opt = document.createElement('option');
-          opt.value = a.id;
-          opt.textContent = (a.name || a.id) + ' (' + (a.status || '') + ')';
-          workloadSelect.appendChild(opt);
-        });
-        if (cur) workloadSelect.value = cur;
-      }).catch(function () {});
-    }
-    populateWorkloads();
-    workloadSelect.addEventListener('change', fetchAndShow);
-    if (tailSelect) tailSelect.addEventListener('change', fetchAndShow);
-    if (viewSelect) viewSelect.addEventListener('change', fetchAndShow);
-    if (refreshBtn) refreshBtn.addEventListener('click', function () { populateWorkloads(); fetchAndShow(); });
-    var autoInterval = null;
-    var cb = el('logs-auto-refresh');
-    if (cb) {
-      cb.addEventListener('change', function () {
-        if (autoInterval) { clearInterval(autoInterval); autoInterval = null; }
-        if (cb.checked) autoInterval = setInterval(fetchAndShow, 3000);
-      });
-    }
+    cancelBtn.addEventListener('click', close);
+    okBtn.addEventListener('click', function () { if (inputEl.value === peerName) { close(); callback(); } });
+    backdrop.addEventListener('click', function handler(e) {
+      if (e.target === backdrop) { close(); backdrop.removeEventListener('click', handler); }
+    });
+    actionsEl.appendChild(cancelBtn);
+    actionsEl.appendChild(okBtn);
+    backdrop.classList.add('open');
+    inputEl.focus();
   }
 
   document.addEventListener('click', function (e) {
@@ -376,13 +626,31 @@
     if (!btn) return;
     if (btn.classList.contains('app-open-link') || btn.classList.contains('app-detail-btn')) {
       e.preventDefault();
-      var row = btn.closest('tr[data-app-id]');
-      if (row) openAppModal(row.dataset.appId);
+      var appId = btn.dataset.appId;
+      var row = btn.closest('[data-app-id]');
+      if (!appId && row) appId = row.dataset.appId;
+      if (appId) openAppModal(appId);
     } else if (btn.classList.contains('app-delete-btn')) {
       e.preventDefault();
       var row = btn.closest('tr[data-app-id]');
-      if (row) deleteApp(row.dataset.appId, row.dataset.appName);
+      if (!row) return;
+      var appId = row.dataset.appId, appName = row.dataset.appName, appType = row.dataset.appType;
+      var deleteMsg = appType === 'executing'
+        ? 'Stop executing "' + appName + '" on this cluster. The peer that submitted it may re-deploy it.'
+        : 'Delete "' + appName + '" and remove it from the peer cluster. This cannot be undone.';
+      showConfirm('Delete workload?', deleteMsg, 'Delete', 'btn-danger', function () { deleteApp(appId, appName); });
     } else if (btn.classList.contains('peer-remove-btn')) {
+      e.preventDefault();
+      var row = btn.closest('tr[data-peer-url]');
+      if (!row) return;
+      var peerName = row.dataset.peerName;
+      showPeerRemoveConfirm(peerName, function () { removePeer(peerName); });
+    } else if (btn.classList.contains('peer-cancel-btn')) {
+      e.preventDefault();
+      var row = btn.closest('tr[data-peer-url]');
+      if (!row) return;
+      showConfirm('Cancel peering?', 'Cancel the in-progress connection to "' + row.dataset.peerName + '".', 'Cancel peering', 'btn-danger', function () { removePeer(row.dataset.peerName); });
+    } else if (btn.classList.contains('peer-retry-btn')) {
       e.preventDefault();
       var row = btn.closest('tr[data-peer-url]');
       if (row) removePeer(row.dataset.peerName);
@@ -391,13 +659,21 @@
       P.acceptInbound(btn.dataset.acceptInbound).then(function () { toast('Connected', 'ok'); refresh(); }).catch(function (err) { toast('Failed: ' + err.message, 'error'); refresh(); });
     } else if (btn.dataset.rejectInbound) {
       e.preventDefault();
-      P.rejectInbound(btn.dataset.rejectInbound).then(function () { toast('Rejected', 'ok'); refresh(); }).catch(function () { refresh(); });
+      var inboundName = btn.closest('.inbound-item') && btn.closest('.inbound-item').querySelector('.inbound-item-name');
+      var iname = inboundName ? inboundName.textContent : 'this peer';
+      showConfirm('Reject request?', 'Reject the incoming connection request from "' + iname + '".', 'Reject', 'btn-danger', function () {
+        P.rejectInbound(btn.dataset.rejectInbound).then(function () { toast('Rejected', 'ok'); refresh(); }).catch(function () { refresh(); });
+      });
     } else if (btn.dataset.approveApp) {
       e.preventDefault();
       P.approveApp(btn.dataset.approveApp).then(function () { toast('Approved ' + (btn.dataset.approveName || ''), 'ok'); refresh(); }).catch(function (err) { toast(err.message, 'error'); refresh(); });
     } else if (btn.dataset.rejectApp) {
       e.preventDefault();
-      P.rejectApp(btn.dataset.rejectApp).then(function () { toast('Rejected', 'ok'); refresh(); }).catch(function () { refresh(); });
+      var approvalName = btn.closest('.approval-item') && btn.closest('.approval-item').querySelector('.approval-item-name');
+      var aname = approvalName ? approvalName.textContent : 'this workload';
+      showConfirm('Reject workload?', 'Reject "' + aname + '" — it will not be deployed on this cluster.', 'Reject', 'btn-danger', function () {
+        P.rejectApp(btn.dataset.rejectApp).then(function () { toast('Rejected', 'ok'); refresh(); }).catch(function () { refresh(); });
+      });
     } else if (btn.dataset.copyEl) {
       e.preventDefault();
       P.copyText(btn.dataset.copyEl, btn);
@@ -419,7 +695,16 @@
         spec = parseSimpleYaml(yaml);
       } catch (err) { toast('Invalid YAML: ' + err.message, 'error'); return; }
       if (!spec.image) { toast('Spec must include an "image" field', 'error'); return; }
-      P.createRemoteApp({ name: name, spec: spec }).then(function () {
+      var targetPeerEl = el('app-target-peer');
+      var targetPeer = targetPeerEl ? targetPeerEl.value : '';
+      // If peer selector exists and has choices, require a selection
+      if (targetPeerEl && !targetPeer) {
+        var peerOpts = Array.from(targetPeerEl.options).filter(function (o) { return !o.disabled && !o.hidden && o.value; });
+        if (peerOpts.length > 0) { toast('Select a target peer', 'error'); return; }
+      }
+      var payload = { name: name, spec: spec };
+      if (targetPeer) payload.target_peer = targetPeer;
+      P.createRemoteApp(payload).then(function () {
         toast('Deployed ' + name, 'ok');
         if (nameEl) nameEl.value = '';
         setDeploySpecValue(window.PorpulsionVscodeEditor && window.PorpulsionVscodeEditor.getDefaultDeploySpec ? window.PorpulsionVscodeEditor.getDefaultDeploySpec() : 'image: nginx:latest\nreplicas: 1\nports:\n  - port: 80\n    name: http');
@@ -431,9 +716,7 @@
     });
   }
 
-  document.body.addEventListener('htmx:afterOnLoad', function (ev) {
-    if (ev.detail.target.id !== 'connect-peer-form') return;
-    var xhr = ev.detail.xhr;
+  function _handleConnectPeerResponse(xhr) {
     var success = xhr && xhr.status >= 200 && xhr.status < 300;
     try {
       var d = JSON.parse(xhr.responseText || '{}');
@@ -450,9 +733,84 @@
       toast(success ? 'Connected' : (xhr.statusText || 'Error'), success ? 'ok' : 'error');
       if (success) setTimeout(refresh, 500);
     }
+  }
+  // htmx:afterOnLoad fires on 2xx; htmx:responseError fires on 4xx/5xx
+  document.body.addEventListener('htmx:afterOnLoad', function (ev) {
+    if (ev.detail.target.id !== 'connect-peer-form') return;
+    _handleConnectPeerResponse(ev.detail.xhr);
+  });
+  document.body.addEventListener('htmx:responseError', function (ev) {
+    if (!ev.detail.elt || ev.detail.elt.id !== 'connect-peer-form') return;
+    _handleConnectPeerResponse(ev.detail.xhr);
   });
 
   var _currentAppId = null;
+
+  function _specToYaml(spec) {
+    if (!spec) return '';
+    var lines = [];
+    var keys = ['image', 'replicas', 'command', 'args', 'imagePullPolicy'];
+    keys.forEach(function (k) {
+      if (spec[k] != null) {
+        var v = spec[k];
+        if (Array.isArray(v)) lines.push(k + ': [' + v.map(function (x) { return JSON.stringify(x); }).join(', ') + ']');
+        else lines.push(k + ': ' + v);
+      }
+    });
+    if (spec.ports && spec.ports.length) {
+      lines.push('ports:');
+      spec.ports.forEach(function (p) {
+        lines.push('  - port: ' + (p.port || 80) + (p.name ? '\n    name: ' + p.name : ''));
+      });
+    }
+    if (spec.resources) {
+      lines.push('resources:');
+      ['requests', 'limits'].forEach(function (t) {
+        if (spec.resources[t]) {
+          lines.push('  ' + t + ':');
+          Object.keys(spec.resources[t]).forEach(function (k) { lines.push('    ' + k + ': ' + spec.resources[t][k]); });
+        }
+      });
+    }
+    if (spec.env && spec.env.length) {
+      lines.push('env:');
+      spec.env.forEach(function (e) { lines.push('  - name: ' + e.name + '\n    value: ' + (e.value || '')); });
+    }
+    return lines.join('\n');
+  }
+
+  function _showModalTab(tabName) {
+    var body = el('app-modal-body');
+    if (!body) return;
+    body.querySelectorAll('.modal-tab').forEach(function (t) { t.classList.toggle('active', t.dataset.tab === tabName); });
+    body.querySelectorAll('.modal-tab-panel').forEach(function (p) { p.classList.toggle('active', p.dataset.panel === tabName); });
+    if (tabName === 'logs') _fetchModalLogs();
+    if (tabName === 'edit' && window.PorpulsionVscodeEditor) {
+      var specYamlEl = el('modal-spec-textarea');
+      var initialVal = specYamlEl ? specYamlEl.dataset.specYaml || '' : '';
+      window.PorpulsionVscodeEditor.initModalSpecEditor(
+        'modal-spec-editor-host',
+        'modal-spec-textarea',
+        initialVal,
+        function (val) { if (specYamlEl) specYamlEl.value = val; }
+      );
+    }
+  }
+
+  function _fetchModalLogs() {
+    var pre = el('modal-logs-pre');
+    var tailSel = el('modal-logs-tail');
+    if (!pre || !_currentAppId) return;
+    pre.textContent = 'Loading…';
+    var tail = tailSel ? parseInt(tailSel.value, 10) : 100;
+    P.getAppLogs(_currentAppId, tail, 'time').then(function (d) {
+      var lines = (d && d.lines) ? d.lines : [];
+      pre.textContent = lines.map(function (l) {
+        return (l.ts ? l.ts + ' ' : '') + (l.pod ? '[' + l.pod + '] ' : '') + (l.message || '');
+      }).join('\n') || '(no logs)';
+    }).catch(function (err) { pre.textContent = 'Error: ' + (err.message || 'failed'); });
+  }
+
   function openAppModal(appId) {
     _currentAppId = appId;
     var modal = el('app-modal');
@@ -465,36 +823,132 @@
     P.getAppDetail(appId).then(function (d) {
       var app = d.app || {};
       var spec = app.spec || {};
-      var html = '<div class="detail-grid"><div class="detail-block"><h4>App Info</h4>' +
-        '<div class="detail-row"><span class="label">ID</span><span class="mono">' + _esc(app.id) + '</span></div>' +
-        '<div class="detail-row"><span class="label">Status</span>' + statusBadge(app.status) + '</div>' +
-        '<div class="detail-row"><span class="label">Running on</span><span>' + _esc(app.target_peer || app.source_peer || '—') + '</span></div>' +
-        '<div class="detail-row"><span class="label">Updated</span><span class="time-ago">' + timeAgo(app.updated_at) + '</span></div></div>' +
-        '<div class="detail-block"><h4>Spec</h4>' +
-        '<div class="detail-row"><span class="label">Image</span><span class="mono">' + _esc(spec.image || '—') + '</span></div>' +
-        '<div class="detail-row"><span class="label">Replicas</span><span>' + (spec.replicas || 1) + '</span></div></div></div>';
+      var isSubmitted = !!app.target_peer;
+
+      // ── Overview tab ──────────────────────────────────────────
+      var overviewHtml =
+        '<div class="detail-grid">' +
+          '<div class="detail-block"><h4>App Info</h4>' +
+            '<div class="detail-row"><span class="label">ID</span><span class="mono">' + _esc(app.id) + '</span></div>' +
+            '<div class="detail-row"><span class="label">Status</span>' + statusBadge(app.status) + '</div>' +
+            '<div class="detail-row"><span class="label">' + (isSubmitted ? 'Running on' : 'From peer') + '</span><span>' + _esc(app.target_peer || app.source_peer || '—') + '</span></div>' +
+            '<div class="detail-row"><span class="label">Updated</span><span>' + timeAgo(app.updated_at) + '</span></div>' +
+          '</div>' +
+          '<div class="detail-block"><h4>Spec</h4>' +
+            '<div class="detail-row"><span class="label">Image</span><span class="mono">' + _esc(spec.image || '—') + '</span></div>' +
+            '<div class="detail-row"><span class="label">Replicas</span><span>' + (spec.replicas || 1) + '</span></div>' +
+          '</div>' +
+        '</div>';
       if ((spec.ports || []).length) {
-        html += '<div class="detail-block" style="margin-top:0.75rem;"><h4>Proxy URLs</h4>';
+        overviewHtml += '<div class="detail-block" style="margin-bottom:0.85rem;"><h4>Proxy URLs</h4>';
         (spec.ports || []).forEach(function (p) {
           var portNum = p.port || 80;
           var proxyUrl = window.location.origin + P.API_BASE + '/remoteapp/' + app.id + '/proxy/' + portNum;
-          html += '<div class="detail-row"><span class="label">' + portNum + (p.name ? ' (' + p.name + ')' : '') + '</span><span class="mono" style="font-size:0.72rem;word-break:break-all;">' + _esc(proxyUrl) + '</span></div>';
+          overviewHtml += '<div class="detail-row"><span class="label">' + portNum + (p.name ? ' (' + _esc(p.name) + ')' : '') + '</span><span class="mono" style="font-size:0.72rem;word-break:break-all;">' + _esc(proxyUrl) + '</span></div>';
         });
-        html += '</div>';
+        overviewHtml += '</div>';
       }
-      html += '<div class="detail-actions"><button type="button" class="btn-sm btn-danger app-modal-delete-btn">Delete</button></div>';
-      body.innerHTML = html;
+
+      // ── Logs tab ──────────────────────────────────────────────
+      var logsHtml =
+        '<div class="modal-logs-toolbar">' +
+          '<span class="text-sm text-muted">Tail:</span>' +
+          '<select id="modal-logs-tail" class="logs-tail-select" style="min-height:28px;padding:0.2rem 1.8rem 0.2rem 0.5rem;font-size:0.78rem;">' +
+            '<option value="50">50</option><option value="100" selected>100</option><option value="200">200</option>' +
+          '</select>' +
+          '<button type="button" class="btn-sm" id="modal-logs-refresh">Refresh</button>' +
+        '</div>' +
+        '<div class="modal-logs-viewer"><pre id="modal-logs-pre" class="logs-content">Loading…</pre></div>';
+
+      // ── Spec tab (submitted apps only) ───────────────────────
+      var specYaml = _specToYaml(spec);
+      var editHtml = isSubmitted
+        ? '<p class="text-sm text-muted" style="margin-bottom:0.75rem;">Edit the YAML spec and save to update the running deployment.</p>' +
+          '<div class="monaco-editor-wrap" id="modal-spec-editor-wrap">' +
+            '<div id="modal-spec-editor-host" class="monaco-editor-host" style="height:220px;" aria-label="YAML spec editor"></div>' +
+            '<textarea id="modal-spec-textarea" class="monaco-fallback-textarea modal-spec-editor" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" data-spec-yaml="' + _esc(specYaml) + '">' + _esc(specYaml) + '</textarea>' +
+          '</div>' +
+          '<div class="flex-end mt1"><button type="button" class="btn-sm" id="modal-spec-save">Save &amp; apply</button></div>'
+        : '<p class="text-sm text-muted">Editing is only available for workloads you submitted.</p>';
+
+      // ── Assemble with tabs ────────────────────────────────────
+      var tabsHtml =
+        '<div class="modal-tabs">' +
+          '<button type="button" class="modal-tab active" data-tab="overview">Overview</button>' +
+          '<button type="button" class="modal-tab" data-tab="logs">Logs</button>' +
+          (isSubmitted ? '<button type="button" class="modal-tab" data-tab="edit">Spec</button>' : '') +
+        '</div>' +
+        '<div class="modal-tab-panel active" data-panel="overview">' + overviewHtml + '</div>' +
+        '<div class="modal-tab-panel" data-panel="logs">' + logsHtml + '</div>' +
+        (isSubmitted ? '<div class="modal-tab-panel" data-panel="edit">' + editHtml + '</div>' : '');
+
+      var actionsHtml = '<div class="detail-actions"><button type="button" class="btn-sm btn-danger app-modal-delete-btn">Delete workload</button></div>';
+
+      body.innerHTML = tabsHtml + actionsHtml;
+      initCustomDropdowns();
+      initNumSpinners();
+
+      // Tab click
+      body.querySelectorAll('.modal-tab').forEach(function (t) {
+        t.addEventListener('click', function () { _showModalTab(t.dataset.tab); });
+      });
+
+      // Logs refresh
+      var logsRefreshBtn = el('modal-logs-refresh');
+      if (logsRefreshBtn) logsRefreshBtn.addEventListener('click', _fetchModalLogs);
+      var logsTailSel = el('modal-logs-tail');
+      if (logsTailSel) logsTailSel.addEventListener('change', _fetchModalLogs);
+
+      // Spec save
+      var specSaveBtn = el('modal-spec-save');
+      if (specSaveBtn) {
+        specSaveBtn.addEventListener('click', function () {
+          var yamlStr = window.PorpulsionVscodeEditor
+            ? window.PorpulsionVscodeEditor.getModalSpecEditorValue('modal-spec-editor-host', 'modal-spec-textarea')
+            : (el('modal-spec-textarea') || {}).value || '';
+          var parsedSpec;
+          try { parsedSpec = parseSimpleYaml(yamlStr); }
+          catch (err) { toast('Invalid YAML: ' + err.message, 'error'); return; }
+          if (!parsedSpec.image) { toast('Spec must include an image field', 'error'); return; }
+          specSaveBtn.disabled = true;
+          specSaveBtn.textContent = 'Saving…';
+          P.updateAppSpec(app.id, parsedSpec).then(function () {
+            toast('Spec updated', 'ok');
+            specSaveBtn.disabled = false;
+            specSaveBtn.textContent = 'Save & apply';
+            refresh();
+          }).catch(function (err) {
+            toast('Error: ' + err.message, 'error');
+            specSaveBtn.disabled = false;
+            specSaveBtn.textContent = 'Save & apply';
+          });
+        });
+      }
+
+      // Delete
       var delBtn = body.querySelector('.app-modal-delete-btn');
-      if (delBtn) delBtn.addEventListener('click', function () { deleteApp(app.id, app.name); });
+      if (delBtn) {
+        delBtn.addEventListener('click', function () {
+          var modalDeleteMsg = isSubmitted
+            ? 'Delete "' + _esc(app.name || app.id) + '" and remove it from the peer cluster. This cannot be undone.'
+            : 'Stop executing "' + _esc(app.name || app.id) + '" on this cluster. The peer that submitted it may re-deploy it.';
+          showConfirm('Delete workload?', modalDeleteMsg, 'Delete', 'btn-danger', function () { deleteApp(app.id, app.name); });
+        });
+      }
     }).catch(function (err) {
       body.innerHTML = '<p style="color:var(--red)">Error: ' + _esc(err.message) + '</p>';
     });
   }
+
   function closeAppModal() {
     _currentAppId = null;
     var modal = el('app-modal');
     if (modal) modal.classList.remove('open');
+    if (window.PorpulsionVscodeEditor) {
+      window.PorpulsionVscodeEditor.disposeModalSpecEditor('modal-spec-editor-host');
+    }
   }
+
   function deleteApp(id, name) {
     P.deleteApp(id).then(function () {
       toast('Deleted ' + (name || id), 'ok');
@@ -502,6 +956,7 @@
       refresh();
     }).catch(function (err) { toast('Error: ' + err.message, 'error'); refresh(); });
   }
+
   function removePeer(name) {
     P.removePeer(name).then(function () { toast('Removed ' + name, 'ok'); refresh(); }).catch(function (err) { toast(err.message, 'error'); refresh(); });
   }
@@ -510,6 +965,97 @@
   if (appModal) appModal.addEventListener('click', function (e) { if (e.target === this) closeAppModal(); });
   var appModalClose = el('app-modal-close');
   if (appModalClose) appModalClose.addEventListener('click', closeAppModal);
+
+  // ── Notifications bell ──────────────────────────────────────
+
+  function renderNotifications(notifications) {
+    var badge = el('notif-badge');
+    var list  = el('notif-list');
+    if (!badge || !list) return;
+
+    var unread = (notifications || []).filter(function (n) { return !n.ack; }).length;
+    if (unread > 0) {
+      badge.textContent = unread > 99 ? '99+' : String(unread);
+      badge.style.display = '';
+      var bellBtn = el('notif-bell');
+      if (bellBtn) bellBtn.classList.add('has-unread');
+    } else {
+      badge.style.display = 'none';
+      var bellBtn = el('notif-bell');
+      if (bellBtn) bellBtn.classList.remove('has-unread');
+    }
+
+    if (!notifications || notifications.length === 0) {
+      list.innerHTML = '<div class="notif-empty">No notifications</div>';
+      return;
+    }
+
+    list.innerHTML = notifications.map(function (n) {
+      return '<div class="notif-item' + (n.ack ? ' acked' : '') + '" data-notif-id="' + _esc(n.id) + '">' +
+        '<span class="notif-dot ' + _esc(n.level || 'info') + '"></span>' +
+        '<div class="notif-content">' +
+          '<div class="notif-title">' + _esc(n.title) + '</div>' +
+          '<div class="notif-msg">' + _esc(n.message) + '</div>' +
+          '<div class="notif-ts">' + timeAgo(n.ts) + '</div>' +
+        '</div>' +
+        '<button type="button" class="notif-dismiss" data-notif-id="' + _esc(n.id) + '" title="Dismiss">' +
+          '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 1l8 8M9 1l-8 8"/></svg>' +
+        '</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  // Bell toggle
+  (function () {
+    var bellBtn  = el('notif-bell');
+    var panel    = el('notif-panel');
+    var clearBtn = el('notif-clear-btn');
+    if (!bellBtn || !panel) return;
+
+    bellBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var open = !panel.hidden;
+      panel.hidden = open;
+      bellBtn.setAttribute('aria-expanded', String(!open));
+      if (!open) {
+        // Ack all on open
+        P.getNotifications().then(function (notifs) {
+          notifs.filter(function (n) { return !n.ack; }).forEach(function (n) {
+            P.ackNotification(n.id).catch(function () {});
+          });
+          renderNotifications(notifs.map(function (n) { return Object.assign({}, n, { ack: true }); }));
+        }).catch(function () {});
+      }
+    });
+
+    document.addEventListener('click', function (e) {
+      if (!panel.hidden && !panel.contains(e.target) && e.target !== bellBtn) {
+        panel.hidden = true;
+        bellBtn.setAttribute('aria-expanded', 'false');
+      }
+    });
+
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        P.clearNotifications().then(function () {
+          renderNotifications([]);
+          panel.hidden = true;
+          bellBtn.setAttribute('aria-expanded', 'false');
+        }).catch(function (err) { toast(err.message, 'error'); });
+      });
+    }
+
+    // Dismiss individual
+    el('notif-list') && el('notif-list').addEventListener('click', function (e) {
+      var btn = e.target.closest('.notif-dismiss');
+      if (!btn) return;
+      var id = btn.dataset.notifId;
+      if (!id) return;
+      P.deleteNotification(id).then(function () {
+        P.getNotifications().then(renderNotifications).catch(function () {});
+      }).catch(function (err) { toast(err.message, 'error'); });
+    });
+  })();
 
   (function bindSettings() {
     var logLevelCtrl = el('setting-log-level');
@@ -521,13 +1067,56 @@
         saveSetting('log_level', btn.dataset.val);
       });
     }
-    var inboundApps = el('setting-inbound-apps');
-    if (inboundApps) inboundApps.addEventListener('change', function () { saveSetting('allow_inbound_remoteapps', inboundApps.checked); });
-    var requireApproval = el('setting-require-approval');
-    if (requireApproval) requireApproval.addEventListener('change', function () { saveSetting('require_remoteapp_approval', requireApproval.checked); });
-    var inboundTunnels = el('setting-inbound-tunnels');
-    if (inboundTunnels) inboundTunnels.addEventListener('change', function () { saveInboundTunnels(inboundTunnels.checked); });
-  })();
+
+    function bindChk(id, key) {
+      var e = el(id);
+      if (e) e.addEventListener('change', function () { saveSetting(key, e.checked); });
+    }
+    bindChk('setting-inbound-apps',         'allow_inbound_remoteapps');
+    bindChk('setting-require-approval',     'require_remoteapp_approval');
+    bindChk('setting-require-res-requests', 'require_resource_requests');
+    bindChk('setting-require-res-limits',   'require_resource_limits');
+    bindChk('setting-inbound-tunnels',      'allow_inbound_tunnels');
+
+    var filtersSaveBtn = el('setting-filters-save');
+    if (filtersSaveBtn) {
+      filtersSaveBtn.addEventListener('click', function () {
+        var payload = {
+          allowed_source_peers: (el('setting-allowed-peers') || {}).value || '',
+          allowed_images:       (el('setting-allowed-images') || {}).value || '',
+          blocked_images:       (el('setting-blocked-images') || {}).value || '',
+        };
+        P.updateSettings(payload).then(function () { toast('Filters saved', 'ok'); }).catch(function (err) { toast(err.message, 'error'); });
+      });
+    }
+
+    var quotasSaveBtn = el('setting-quotas-save');
+    if (quotasSaveBtn) {
+      quotasSaveBtn.addEventListener('click', function () {
+        var payload = {
+          max_cpu_request_per_pod:    (el('setting-max-cpu-req') || {}).value || '',
+          max_cpu_limit_per_pod:      (el('setting-max-cpu-lim') || {}).value || '',
+          max_memory_request_per_pod: (el('setting-max-mem-req') || {}).value || '',
+          max_memory_limit_per_pod:   (el('setting-max-mem-lim') || {}).value || '',
+          max_replicas_per_app:       parseInt((el('setting-max-replicas') || {}).value || '0', 10) || 0,
+          max_total_deployments:      parseInt((el('setting-max-total-deploys') || {}).value || '0', 10) || 0,
+          max_total_pods:             parseInt((el('setting-max-total-pods') || {}).value || '0', 10) || 0,
+          max_total_cpu_requests:     (el('setting-max-total-cpu') || {}).value || '',
+          max_total_memory_requests:  (el('setting-max-total-mem') || {}).value || '',
+        };
+        P.updateSettings(payload).then(function () { toast('Quotas saved', 'ok'); }).catch(function (err) { toast(err.message, 'error'); });
+      });
+    }
+
+    var tunnelsSaveBtn = el('setting-tunnels-save');
+    if (tunnelsSaveBtn) {
+      tunnelsSaveBtn.addEventListener('click', function () {
+        var payload = {
+          allowed_tunnel_peers: _getTunnelAllowedValue(),
+        };
+        P.updateSettings(payload).then(function () { toast('Tunnel settings saved', 'ok'); }).catch(function (err) { toast(err.message, 'error'); });
+      });
+    }
 
   window.PorpulsionPages = {
     refresh: refresh,
@@ -613,11 +1202,173 @@
     return parseBlock(0, 0).obj;
   }
 
+  // ── Custom number spinners ─────────────────────────────────────
+  function initNumSpinners() {
+    document.querySelectorAll('input[type="number"]:not(.num-spinner-init)').forEach(function (inp) {
+      inp.classList.add('num-spinner-init');
+      var min = inp.hasAttribute('min') ? parseFloat(inp.min) : -Infinity;
+      var max = inp.hasAttribute('max') ? parseFloat(inp.max) : Infinity;
+      var step = inp.step && parseFloat(inp.step) > 0 ? parseFloat(inp.step) : 1;
+      var wrap = document.createElement('div');
+      wrap.className = 'num-input-wrap';
+      inp.parentNode.insertBefore(wrap, inp);
+      var btnMinus = document.createElement('button');
+      btnMinus.type = 'button';
+      btnMinus.className = 'num-spin-btn';
+      btnMinus.setAttribute('aria-label', 'Decrease');
+      btnMinus.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 6h8"/></svg>';
+      var btnPlus = document.createElement('button');
+      btnPlus.type = 'button';
+      btnPlus.className = 'num-spin-btn';
+      btnPlus.setAttribute('aria-label', 'Increase');
+      btnPlus.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 2v8M2 6h8"/></svg>';
+      wrap.appendChild(btnMinus);
+      wrap.appendChild(inp);
+      wrap.appendChild(btnPlus);
+      function update(delta) {
+        var cur = inp.value === '' ? (min !== -Infinity ? min : 0) : parseFloat(inp.value);
+        var next = Math.round((cur + delta) / step) * step;
+        if (next < min) next = min;
+        if (next > max) next = max;
+        inp.value = next;
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      btnMinus.addEventListener('click', function () { update(-step); });
+      btnPlus.addEventListener('click', function () { update(step); });
+    });
+  }
+
+  // ── Custom dropdown (replaces <select> with JS-driven panel) ──
+  function initCustomDropdowns() {
+    document.querySelectorAll('select:not(.custom-dd-init)').forEach(function (sel) {
+      sel.classList.add('custom-dd-init');
+      // Build wrapper
+      var wrap = document.createElement('div');
+      wrap.className = 'custom-dd';
+      sel.parentNode.insertBefore(wrap, sel);
+      // Trigger (visible button)
+      var trigger = document.createElement('button');
+      trigger.type = 'button';
+      trigger.className = 'custom-dd-trigger';
+      trigger.setAttribute('aria-haspopup', 'listbox');
+      trigger.setAttribute('aria-expanded', 'false');
+      // Label span + chevron
+      var label = document.createElement('span');
+      label.className = 'custom-dd-label';
+      var chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      chevron.setAttribute('class', 'custom-dd-chevron');
+      chevron.setAttribute('width', '12');
+      chevron.setAttribute('height', '12');
+      chevron.setAttribute('viewBox', '0 0 12 12');
+      chevron.setAttribute('fill', 'none');
+      chevron.setAttribute('stroke', 'currentColor');
+      chevron.setAttribute('stroke-width', '1.8');
+      chevron.setAttribute('stroke-linecap', 'round');
+      chevron.setAttribute('stroke-linejoin', 'round');
+      chevron.setAttribute('aria-hidden', 'true');
+      var chevPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      chevPath.setAttribute('d', 'M2 4l4 4 4-4');
+      chevron.appendChild(chevPath);
+      trigger.appendChild(label);
+      trigger.appendChild(chevron);
+      // Panel
+      var panel = document.createElement('div');
+      panel.className = 'custom-dd-panel';
+      panel.setAttribute('role', 'listbox');
+      panel.style.display = 'none';
+      wrap.appendChild(trigger);
+      wrap.appendChild(panel);
+      // Hide original select but keep it for form value
+      sel.style.display = 'none';
+      wrap.appendChild(sel);
+
+      function syncLabel() {
+        var opt = sel.options[sel.selectedIndex];
+        var isPlaceholder = opt && (opt.disabled || opt.value === '') && opt.hidden !== false;
+        if (isPlaceholder || !opt) {
+          label.textContent = '';
+          label.dataset.placeholder = opt ? opt.text : '';
+        } else {
+          label.textContent = opt.text;
+          label.dataset.placeholder = '';
+        }
+      }
+      function buildOptions() {
+        panel.innerHTML = '';
+        Array.from(sel.options).forEach(function (opt, idx) {
+          // Skip placeholder options (disabled + hidden)
+          if (opt.disabled && opt.hidden) return;
+          var item = document.createElement('div');
+          item.className = 'custom-dd-option' + (idx === sel.selectedIndex ? ' selected' : '');
+          item.setAttribute('role', 'option');
+          item.setAttribute('aria-selected', idx === sel.selectedIndex ? 'true' : 'false');
+          item.dataset.idx = idx;
+          item.textContent = opt.text;
+          item.addEventListener('click', function () {
+            sel.selectedIndex = idx;
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            syncLabel();
+            closePanel();
+          });
+          panel.appendChild(item);
+        });
+      }
+      function openPanel() {
+        buildOptions();
+        panel.style.display = '';
+        trigger.setAttribute('aria-expanded', 'true');
+        trigger.classList.add('open');
+        // Position check (flip up if near bottom)
+        requestAnimationFrame(function () {
+          var rect = wrap.getBoundingClientRect();
+          var spaceBelow = window.innerHeight - rect.bottom;
+          if (spaceBelow < panel.offsetHeight + 8 && rect.top > panel.offsetHeight + 8) {
+            panel.classList.add('flip-up');
+          } else {
+            panel.classList.remove('flip-up');
+          }
+        });
+      }
+      function closePanel() {
+        panel.style.display = 'none';
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.classList.remove('open');
+      }
+      trigger.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (panel.style.display === 'none') openPanel(); else closePanel();
+      });
+      document.addEventListener('click', function (e) {
+        if (!wrap.contains(e.target)) closePanel();
+      }, true);
+      // Keyboard navigation
+      trigger.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); if (panel.style.display === 'none') openPanel(); }
+        if (e.key === 'ArrowUp') { e.preventDefault(); if (panel.style.display === 'none') openPanel(); }
+        if (e.key === 'Escape') closePanel();
+      });
+      // Keep in sync if select changes externally (e.g. JS sets selectedIndex)
+      sel.addEventListener('change', function () { syncLabel(); buildOptions(); });
+      // Observe option mutations (dynamic population via JS)
+      if (window.MutationObserver) {
+        var mo = new MutationObserver(function () { syncLabel(); if (panel.style.display !== 'none') buildOptions(); });
+        mo.observe(sel, { childList: true, subtree: false });
+      }
+      syncLabel();
+      // Copy width/style from select
+      if (sel.id) { trigger.setAttribute('aria-controls', 'dd-panel-' + sel.id); panel.id = 'dd-panel-' + sel.id; }
+      if (sel.hasAttribute('aria-label')) trigger.setAttribute('aria-label', sel.getAttribute('aria-label'));
+    });
+  }
+
   refresh();
   initDeploySpecEditor();
   loadToken();
   loadSettings();
-  loadLogs();
+  initNumSpinners();
+  initCustomDropdowns();
   setInterval(refresh, 3000);
   setInterval(loadToken, 5000);
+})();
 })();

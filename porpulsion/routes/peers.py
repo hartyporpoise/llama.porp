@@ -11,6 +11,7 @@ from porpulsion import state, tls
 from porpulsion.models import Peer
 from porpulsion.peering import initiate_peering
 from porpulsion.channel import open_channel_to
+from porpulsion.k8s.executor import delete_workload
 
 log = logging.getLogger("porpulsion.routes.peers")
 
@@ -178,24 +179,46 @@ def remove_peer(peer_name):
     if peer_name not in state.peers:
         return jsonify({"error": "peer not found"}), 404
 
+    from porpulsion.channel import get_channel
+
+    # ── 1. Delete local_apps we submitted to this peer ───────────
+    # Tell the peer to tear down each K8s workload, then clean up locally.
+    for ra in list(state.local_apps.values()):
+        if ra.target_peer == peer_name:
+            try:
+                get_channel(peer_name, wait=2.0).call("remoteapp/delete", {"id": ra.id})
+            except Exception as exc:
+                log.debug("Could not notify %s to delete app %s: %s", peer_name, ra.id, exc)
+            ra.status = "Deleted"
+            del state.local_apps[ra.id]
+            log.info("Deleted local app %s (peer %s removed)", ra.id, peer_name)
+
+    # ── 2. Delete remote_apps we're executing on behalf of this peer ──
+    # Clean up our own K8s workloads; no need to notify the departing peer.
+    for ra in list(state.remote_apps.values()):
+        if ra.source_peer == peer_name:
+            try:
+                delete_workload(ra)
+            except Exception as exc:
+                log.debug("Could not delete workload for app %s: %s", ra.id, exc)
+            ra.status = "Deleted"
+            del state.remote_apps[ra.id]
+            log.info("Deleted remote app %s (peer %s removed)", ra.id, peer_name)
+
+    tls.save_state_configmap(state.NAMESPACE, state.local_apps, state.settings)
+
+    # ── 3. Notify peer and close the channel ─────────────────────
     peer = state.peers.pop(peer_name)
     log.info("Removed peer %s", peer_name)
 
     try:
-        from porpulsion.channel import get_channel
         get_channel(peer_name, wait=2.0).push("peer/disconnect", {"name": state.AGENT_NAME})
     except Exception as exc:
         log.debug("Could not notify %s of disconnection: %s", peer_name, exc)
 
-    # Close and remove the WS channel
     ch = state.peer_channels.pop(peer_name, None)
     if ch:
         ch.close()
-
-    for ra in list(state.local_apps.values()):
-        if ra.target_peer == peer_name:
-            ra.status = "Failed"
-            log.info("Marked app %s as Failed (peer %s removed)", ra.id, peer_name)
 
     tls.save_peers(state.NAMESPACE, state.peers)
     return jsonify({"ok": True, "removed": peer_name})
@@ -266,6 +289,25 @@ def connect_peer():
         return jsonify({"error": "invite_token is required"}), 400
     if not ca_fingerprint:
         return jsonify({"error": "ca_fingerprint is required"}), 400
+
+    # Reject if already peered with a peer at this URL
+    for existing in state.peers.values():
+        if existing.url.rstrip("/") == url:
+            return jsonify({"error": f"Already peered with \"{existing.name}\" at this URL"}), 409
+
+    # Reject if the CA fingerprint matches an already-connected peer (same cluster, different URL)
+    for existing in state.peers.values():
+        if existing.ca_pem:
+            try:
+                existing_fp = tls.cert_fingerprint(existing.ca_pem)
+                if existing_fp == ca_fingerprint:
+                    return jsonify({"error": f"Already peered with this cluster as \"{existing.name}\""}), 409
+            except Exception:
+                pass
+
+    # Reject if already attempting to connect to this URL
+    if url in state.pending_peers:
+        return jsonify({"error": f"Already connecting to {url} — cancel it first if you want to retry"}), 409
 
     state.pending_peers[url] = {
         "name": url, "url": url,

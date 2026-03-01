@@ -74,6 +74,12 @@
               <input type="text" id="app-name" placeholder="e.g. my-nginx" required>
             </div>
             <div class="form-group">
+              <label class="form-label" for="app-target-peer">Target peer</label>
+              <select id="app-target-peer">
+                <option value="">— select peer —</option>
+              </select>
+            </div>
+            <div class="form-group">
               <label class="form-label" for="app-spec-yaml">Spec (YAML)</label>
               <div class="monaco-editor-wrap" id="deploy-editor-wrap">
                 <div id="app-spec-editor" class="monaco-editor-host" aria-label="YAML spec editor"></div>
@@ -103,7 +109,6 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="{{ url_for('static', filename='js/setup-vscode-editor.js') }}"></script>
 <script src="https://unpkg.com/monaco-editor@0.52.2/min/vs/loader.js"></script>
 <script>
   (function () {

@@ -15,6 +15,7 @@ AGENT_NAME: str = ""
 NAMESPACE:  str = "porpulsion"
 SELF_URL:   str = ""
 AGENT_CA_PEM: bytes = b""
+VERSION_HASH: str = ""          # SHA-256 of key protocol files, first 16 hex chars
 
 # ── In-memory state ───────────────────────────────────────────
 peers:          dict[str, Peer]          = {}
@@ -29,3 +30,6 @@ invite_token: str = ""
 
 # peer_name -> PeerChannel (live WebSocket connection to that peer)
 peer_channels: "dict[str, PeerChannel]" = {}
+
+# In-app notifications — newest first, capped at 50
+notifications: list[dict] = []

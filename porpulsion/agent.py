@@ -4,6 +4,7 @@ Porpulsion agent entrypoint.
 Initialises runtime config (TLS, invite token, env vars) into the shared
 state module, registers Flask blueprints, and starts the HTTP server.
 """
+import hashlib
 import logging
 import os
 import pathlib
@@ -19,6 +20,7 @@ from porpulsion.routes import workloads as workloads_bp
 from porpulsion.routes import tunnels as tunnels_bp
 from porpulsion.routes import settings as settings_bp
 from porpulsion.routes import logs as logs_bp
+from porpulsion.routes import notifications as notifications_bp
 from porpulsion.routes import ui as ui_bp
 
 logging.basicConfig(
@@ -62,7 +64,19 @@ _CA_PEM, _CA_KEY_PEM = tls.load_or_generate_ca(state.AGENT_NAME, state.NAMESPACE
 
 state.AGENT_CA_PEM = _CA_PEM
 
-log.info("SELF_URL=%s", state.SELF_URL)
+# Compute a version fingerprint from key protocol files. Used to detect
+# version mismatches when peers connect over WebSocket.
+def _compute_version_hash() -> str:
+    h = hashlib.sha256()
+    _here = pathlib.Path(__file__).parent
+    for fname in sorted(["channel.py", "channel_handlers.py", "models.py"]):
+        p = _here / fname
+        if p.exists():
+            h.update(p.read_bytes())
+    return h.hexdigest()[:16]
+
+state.VERSION_HASH = _compute_version_hash()
+log.info("SELF_URL=%s  VERSION_HASH=%s", state.SELF_URL, state.VERSION_HASH)
 
 # ── Restore persisted state ───────────────────────────────────
 
@@ -121,6 +135,7 @@ app.register_blueprint(workloads_bp.bp, url_prefix="/api")
 app.register_blueprint(tunnels_bp.bp, url_prefix="/api")
 app.register_blueprint(settings_bp.bp, url_prefix="/api")
 app.register_blueprint(logs_bp.bp, url_prefix="/api")
+app.register_blueprint(notifications_bp.bp, url_prefix="/api")
 app.register_blueprint(ui_bp.bp)
 
 
