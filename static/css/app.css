@@ -201,8 +201,8 @@ body {
   transition: background 0.15s, color 0.15s;
 }
 .notif-bell::before, .notif-bell::after { display: none; }
-.notif-bell:hover { background: var(--surface-raised); color: var(--on-surface); }
-.notif-bell.has-unread { color: var(--on-surface); }
+.notif-bell:hover { background: var(--surface2); color: var(--text); }
+.notif-bell.has-unread { color: var(--text); }
 .notif-badge {
   position: absolute;
   top: 3px; right: 3px;
@@ -488,7 +488,7 @@ nav a {
   margin-bottom: 4px;
   letter-spacing: 0.00625em;
 }
-nav a .nav-icon { width: 20px; text-align: center; opacity: 0.8; font-size: 1rem; }
+nav a .nav-icon { width: 22px; text-align: center; opacity: 0.8; font-size: 1.25rem; }
 nav a:hover { background: var(--surface2); color: var(--text); }
 nav a.active { background: var(--accent-glow); color: var(--accent); }
 nav a.active .nav-icon { opacity: 1; }
@@ -1490,6 +1490,171 @@ select { display: none; }
 .method-put, .method-del { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; font-family: "SF Mono", "Fira Code", monospace; }
 .method-put { background: var(--yellow-dim); color: var(--yellow); }
 .method-del { background: var(--red-dim); color: var(--red); }
+
+/* ── API Reference (custom, no Swagger UI) ────────────────────── */
+.api-method {
+  display: inline-block;
+  min-width: 58px;
+  padding: 0.18rem 0.45rem;
+  border-radius: 5px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+  text-align: center;
+  flex-shrink: 0;
+}
+.api-method.method-get    { background: var(--green-dim);  color: var(--green); }
+.api-method.method-post   { background: var(--accent-glow); color: var(--accent); }
+.api-method.method-put    { background: var(--yellow-dim); color: var(--yellow); }
+.api-method.method-delete { background: var(--red-dim);    color: var(--red); }
+.api-method.method-patch  { background: var(--yellow-dim); color: var(--yellow); }
+.api-method.method-other  { background: var(--surface3);   color: var(--muted); }
+
+.api-tag-group { margin-bottom: 1.25rem; }
+.api-tag-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+  padding: 0.2rem 0 0.5rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.4rem;
+}
+.api-op {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 0.4rem;
+  overflow: hidden;
+}
+.api-op-summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface2);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  min-height: unset;
+  border-radius: 0;
+  transition: background 0.12s;
+}
+.api-op-summary::before, .api-op-summary::after { display: none; }
+.api-op-summary:hover { background: var(--surface3); }
+.api-op-summary.open  { background: var(--surface3); }
+.api-op-path {
+  font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+  font-size: 0.78rem;
+  color: var(--text);
+  background: none;
+  padding: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.api-op-title {
+  font-size: 0.78rem;
+  color: var(--muted);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.api-op-chevron {
+  flex-shrink: 0;
+  color: var(--muted);
+  margin-left: auto;
+  transition: transform 0.15s;
+}
+.api-op-summary.open .api-op-chevron { transform: rotate(180deg); }
+
+.api-op-body {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 0.75rem;
+}
+.api-op-desc {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0 0 0.75rem;
+  line-height: 1.55;
+}
+.api-section-label {
+  font-size: 0.67rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  margin: 0.75rem 0 0.35rem;
+}
+.api-params-table, .api-resp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  margin-bottom: 0.25rem;
+}
+.api-params-table th, .api-resp-table th {
+  font-size: 0.67rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: var(--surface2);
+  padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.api-params-table td, .api-resp-table td {
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  color: var(--text);
+}
+.api-params-table tr:last-child td, .api-resp-table tr:last-child td { border-bottom: none; }
+.param-type { color: var(--muted); font-family: "SF Mono", "Fira Code", ui-monospace, monospace; font-size: 0.72rem; }
+.param-desc { color: var(--muted); font-size: 0.76rem; }
+.param-in {
+  font-size: 0.68rem;
+  font-weight: 600;
+  background: var(--surface3);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+}
+.param-required {
+  font-size: 0.65rem;
+  color: var(--red);
+  font-weight: 600;
+  margin-left: 3px;
+}
+.api-status {
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+.api-status.status-ok   { background: var(--green-dim);  color: var(--green); }
+.api-status.status-redir{ background: var(--yellow-dim); color: var(--yellow); }
+.api-status.status-err  { background: var(--red-dim);    color: var(--red); }
+.schema-ref { color: var(--accent); font-style: italic; }
+.api-body-schema {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+.resp-schema { font-size: 0.72rem; word-break: break-word; }
+@media (max-width: 640px) {
+  .api-op-title { display: none; }
+  .api-op-path  { max-width: 60vw; }
+}
 
 /* ── Logs page ────────────────────────────────────────────────── */
 .logs-toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }

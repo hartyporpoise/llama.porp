@@ -32,7 +32,7 @@ def build_spec() -> APISpec:
             ),
         ),
     )
-    spec.options["servers"] = [{"url": "/", "description": "Current origin (dashboard port 8000)"}]
+    spec.options["servers"] = [{"url": "/api", "description": "API base"}]
 
     # ── Components: schemas from models (marshalling only, no duplication) ──
     spec.components.schema("PeerEntry", peer_entry_schema())
@@ -561,6 +561,128 @@ def build_spec() -> APISpec:
                     "400": {"description": "Validation error"},
                 },
             ),
+        ),
+    )
+    spec.path(
+        path="/logs",
+        operations=dict(
+            get=dict(
+                summary="Agent logs",
+                description="Recent in-process log lines buffered by the agent. `tail` (default 200, max 500). `format=text` returns plain text.",
+                operationId="getLogs",
+                parameters=[
+                    {"name": "tail", "in": "query", "schema": {"type": "integer", "default": 200}},
+                    {"name": "format", "in": "query", "schema": {"type": "string", "enum": ["json", "text"], "default": "json"}},
+                ],
+                responses=resp_json({
+                    "type": "object",
+                    "properties": {
+                        "lines": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "ts": {"type": "string"},
+                                    "level": {"type": "string"},
+                                    "message": {"type": "string"},
+                                },
+                            },
+                        }
+                    },
+                }),
+            )
+        ),
+    )
+    spec.path(
+        path="/remoteapp/{app_id}/logs",
+        operations=dict(
+            get=dict(
+                summary="RemoteApp pod logs",
+                description="Recent pod log lines for a RemoteApp executing on this cluster (or proxied from peer). `tail` default 200. `order=time` to sort by timestamp; `order=pod` to group by pod.",
+                operationId="getAppLogs",
+                parameters=[
+                    {"name": "app_id", "in": "path", "required": True, "schema": {"type": "string"}},
+                    {"name": "tail", "in": "query", "schema": {"type": "integer", "default": 200}},
+                    {"name": "order", "in": "query", "schema": {"type": "string", "enum": ["pod", "time"], "default": "pod"}},
+                ],
+                responses={
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "lines": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "pod": {"type": "string"},
+                                                    "message": {"type": "string"},
+                                                    "ts": {"type": "string", "nullable": True},
+                                                },
+                                            },
+                                        }
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "404": {"description": "App not found"},
+                },
+            )
+        ),
+    )
+    spec.path(
+        path="/notifications",
+        operations=dict(
+            get=dict(
+                summary="List notifications",
+                description="In-app notifications (newest first, capped at 50).",
+                operationId="listNotifications",
+                responses=resp_json({
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "level": {"type": "string", "enum": ["info", "warn", "error"]},
+                            "title": {"type": "string"},
+                            "message": {"type": "string"},
+                            "ts": {"type": "string"},
+                            "ack": {"type": "boolean"},
+                        },
+                    },
+                }),
+            ),
+            delete=dict(
+                summary="Clear all notifications",
+                operationId="clearNotifications",
+                responses={"200": {"description": "OK"}},
+            ),
+        ),
+    )
+    spec.path(
+        path="/notifications/{notif_id}/ack",
+        operations=dict(
+            post=dict(
+                summary="Acknowledge notification",
+                operationId="ackNotification",
+                parameters=[{"name": "notif_id", "in": "path", "required": True, "schema": {"type": "string"}}],
+                responses={"200": {"description": "OK"}, "404": {"description": "Not found"}},
+            )
+        ),
+    )
+    spec.path(
+        path="/notifications/{notif_id}",
+        operations=dict(
+            delete=dict(
+                summary="Delete notification",
+                operationId="deleteNotification",
+                parameters=[{"name": "notif_id", "in": "path", "required": True, "schema": {"type": "string"}}],
+                responses={"200": {"description": "OK"}},
+            )
         ),
     )
     return spec

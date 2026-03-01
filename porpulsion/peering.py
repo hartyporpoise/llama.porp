@@ -60,6 +60,15 @@ def initiate_peering(agent_name, self_url, peer_url, invite_token,
                             if peer_url in pending_peers:
                                 pending_peers[peer_url]["status"] = "failed"
                                 pending_peers[peer_url]["error"]  = "CA fingerprint mismatch — possible MITM"
+                            try:
+                                from porpulsion.notifications import add_notification
+                                add_notification(
+                                    level="error",
+                                    title="Peering aborted: CA fingerprint mismatch",
+                                    message=f"{peer_url} — possible MITM. Expected {expected_ca_fp[:16]}, got {actual_fp[:16]}.",
+                                )
+                            except Exception:
+                                pass
                             return
 
                     if peer_ca:
@@ -88,6 +97,15 @@ def initiate_peering(agent_name, self_url, peer_url, invite_token,
             pending_peers[peer_url]["status"] = "failed"
             pending_peers[peer_url]["attempts"] = max_retries
         log.error("Failed to reach %s after %d attempts", peer_url, max_retries)
+        try:
+            from porpulsion.notifications import add_notification
+            add_notification(
+                level="error",
+                title="Peering failed",
+                message=f"Could not reach {peer_url} after {max_retries} attempts.",
+            )
+        except Exception:
+            pass
 
     t = threading.Thread(target=_attempt, daemon=True)
     t.start()

@@ -23,6 +23,8 @@ def handle_remoteapp_receive(payload: dict) -> dict:
     from porpulsion.models import RemoteApp, RemoteAppSpec
     from porpulsion.routes.workloads import _check_resource_quota
 
+    from porpulsion.notifications import add_notification
+
     if not state.settings.allow_inbound_remoteapps:
         raise RuntimeError("inbound workloads are disabled on this agent")
 
@@ -30,6 +32,11 @@ def handle_remoteapp_receive(payload: dict) -> dict:
     source_peer = payload.get("source_peer", "unknown")
     quota_err = _check_resource_quota(spec, source_peer=source_peer)
     if quota_err:
+        add_notification(
+            level="error",
+            title=f"Workload rejected from {source_peer}",
+            message=f"{payload.get('name', '?')!r}: {quota_err}",
+        )
         raise RuntimeError(quota_err)
 
     app_id = payload.get("id") or __import__("uuid").uuid4().hex[:8]
@@ -48,6 +55,11 @@ def handle_remoteapp_receive(payload: dict) -> dict:
         log.info("App %s queued for approval (via channel) from %s", app_id, source_peer)
         tls.save_state_configmap(state.NAMESPACE, state.local_apps, state.settings,
                                  state.pending_approval)
+        add_notification(
+            level="info",
+            title="Approval required",
+            message=f"{payload['name']!r} from {source_peer} is waiting for your approval.",
+        )
         return {"id": app_id, "status": "pending_approval"}
 
     ra = RemoteApp(
@@ -66,15 +78,23 @@ def handle_remoteapp_receive(payload: dict) -> dict:
 def handle_remoteapp_status(payload: dict):
     """Status update pushed from executor back to the submitting peer."""
     from porpulsion import state, tls
+    from porpulsion.notifications import add_notification
     app_id = payload.get("id") or payload.get("app_id", "")
     status = payload.get("status", "")
     updated_at = payload.get("updated_at", datetime.now(timezone.utc).isoformat())
 
     if app_id in state.local_apps:
-        state.local_apps[app_id].status = status
-        state.local_apps[app_id].updated_at = updated_at
+        ra = state.local_apps[app_id]
+        ra.status = status
+        ra.updated_at = updated_at
         log.info("Status update for %s: %s (via channel)", app_id, status)
         tls.save_state_configmap(state.NAMESPACE, state.local_apps, state.settings)
+        if status.startswith("Failed") or status == "Timeout":
+            add_notification(
+                level="error",
+                title=f"Workload failed: {ra.name}",
+                message=f"{ra.name!r} on {ra.target_peer} → {status}.",
+            )
 
 
 def handle_remoteapp_delete(payload: dict) -> dict:
@@ -199,12 +219,19 @@ def handle_proxy_request(payload: dict, peer_name: str = "") -> dict:
 def handle_peer_disconnect(payload: dict):
     """Peer is telling us it's disconnecting cleanly."""
     from porpulsion import state, tls
+    from porpulsion.notifications import add_notification
     peer_name = payload.get("name", "")
     if peer_name and peer_name in state.peers:
         state.peers.pop(peer_name)
         state.peer_channels.pop(peer_name, None)
+        affected = []
         for ra in list(state.local_apps.values()):
             if ra.target_peer == peer_name:
                 ra.status = "Failed"
+                affected.append(ra.name)
         tls.save_peers(state.NAMESPACE, state.peers)
         log.info("Peer %s disconnected (via channel)", peer_name)
+        msg = f"Peer {peer_name!r} disconnected."
+        if affected:
+            msg += f" {len(affected)} workload(s) marked Failed: {', '.join(affected[:3])}{'…' if len(affected) > 3 else ''}."
+        add_notification(level="warn", title=f"Peer disconnected: {peer_name}", message=msg)

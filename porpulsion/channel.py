@@ -63,6 +63,19 @@ class _SimpleWsSendAdapter:
         except Exception:
             pass
 
+def _emit_reconnect_failure(peer_name: str):
+    try:
+        from porpulsion.notifications import add_notification
+        add_notification(
+            level="error",
+            title=f"Channel unreachable: {peer_name}",
+            message=f"Lost connection to {peer_name!r} and repeated reconnects are failing. Will keep retrying.",
+        )
+        log.warning("Persistent reconnect failure to peer %s", peer_name)
+    except Exception as exc:
+        log.debug("Could not emit reconnect failure notification: %s", exc)
+
+
 def _emit_version_mismatch(peer_name: str, peer_ver: str):
     try:
         from porpulsion import state as _state
@@ -190,6 +203,7 @@ class PeerChannel:
         connection alive, reconnecting on failure. Run in a daemon thread.
         """
         attempt = 0
+        _notified_failure = False   # emit reconnect-failure notification once per outage
         while self._running:
             try:
                 self._connect()
@@ -200,11 +214,16 @@ class PeerChannel:
                 log.warning("Channel to %s: connect failed (%s) — retrying in %ds",
                             self.peer_name, exc, delay)
                 attempt += 1
+                # Notify once when we've exhausted the fast retries (after ~14s)
+                if attempt == len(_RECONNECT_DELAY) and not _notified_failure:
+                    _notified_failure = True
+                    _emit_reconnect_failure(self.peer_name)
                 time.sleep(delay)
                 continue
 
-            # Connected — reset backoff so the next drop reconnects quickly
+            # Connected — reset backoff and clear failure flag
             attempt = 0
+            _notified_failure = False
             self._recv_loop()
 
             if not self._running:
