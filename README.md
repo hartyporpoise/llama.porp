@@ -265,17 +265,25 @@ porpulsion/
 │   ├── channel_handlers.py   # Message handlers (remoteapp/*, proxy/*, peer/*)
 │   ├── tls.py                # CA/leaf cert generation, k8s Secret/ConfigMap persistence
 │   ├── routes/
-│   │   ├── peers.py          # /peers, /peer, /peers/connect, /token
-│   │   ├── workloads.py      # /remoteapp, /remoteapps, /remoteapp/<id>/*
-│   │   ├── tunnels.py        # /remoteapp/<id>/proxy/* (HTTP reverse proxy)
-│   │   ├── settings.py       # /settings
-│   │   └── ws.py             # /ws (WebSocket upgrade + CA auth)
+│   │   ├── peers.py          # /api/peers, /api/peer, /api/peers/connect, /api/token
+│   │   ├── workloads.py      # /api/remoteapp, /api/remoteapps, /api/remoteapp/<id>/*
+│   │   ├── tunnels.py       # /api/remoteapp/<id>/proxy/* (HTTP reverse proxy)
+│   │   ├── settings.py      # /api/settings
+│   │   ├── logs.py          # /api/logs
+│   │   ├── ui.py            # UI at root: /, /peers, /workloads, /tunnels, /logs, /settings, /docs
+│   │   └── ws.py            # /ws (WebSocket upgrade + CA auth)
 │   └── k8s/
 │       ├── executor.py       # Creates/updates/deletes Kubernetes Deployments
 │       └── tunnel.py         # Resolves pod IP from labels, proxies HTTP
 ├── templates/
-│   └── dashboard.html        # Single-page dashboard (no build step)
+│   ├── base.html             # Layout, nav, theme; all pages extend this
+│   ├── ui/                   # Page templates (overview, peers, workloads, tunnels, logs, settings, docs)
+│   └── macros/               # Shared Jinja2 macros (cards, badges)
 ├── static/
+│   ├── css/app.css           # Mobile-first layout, light/dark theme
+│   ├── js/api.js              # API client (/api/* endpoints)
+│   ├── js/app.js              # Toast, theme, DOM helpers; builds window.Porpulsion
+│   ├── js/pages.js            # Page refresh, render, form bindings
 │   └── logo.png
 ├── charts/porpulsion/        # Helm chart
 │   ├── Chart.yaml

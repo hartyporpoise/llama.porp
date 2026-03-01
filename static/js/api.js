@@ -1,0 +1,87 @@
+/**
+ * Porpulsion API client — base URL, fetch helpers, and all /api/* endpoints.
+ * Load before app.js. Exposes window.PorpulsionApi for use by app.js and pages.
+ */
+(function () {
+  'use strict';
+
+  var API_BASE = '/api';
+
+  function getJson(url) {
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error(r.statusText);
+      return r.json();
+    });
+  }
+
+  function postJson(url, body) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    }).then(function (r) {
+      return r.json().then(function (d) {
+        if (!r.ok) throw new Error(d.error || r.statusText);
+        return d;
+      });
+    });
+  }
+
+  function del(url) {
+    return fetch(url, { method: 'DELETE' }).then(function (r) {
+      return r.json().then(function (d) {
+        if (!r.ok) throw new Error(d.error || r.statusText);
+        return d;
+      });
+    });
+  }
+
+  function putJson(url, body) {
+    return fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    }).then(function (r) {
+      return r.json().then(function (d) {
+        if (!r.ok) throw new Error(d.error || r.statusText);
+        return d;
+      });
+    });
+  }
+
+  window.PorpulsionApi = {
+    API_BASE: API_BASE,
+    getJson: getJson,
+    postJson: postJson,
+    del: del,
+    putJson: putJson,
+
+    getPeers: function () { return getJson(API_BASE + '/peers'); },
+    getInbound: function () { return getJson(API_BASE + '/peers/inbound'); },
+    getRemoteApps: function () { return getJson(API_BASE + '/remoteapps'); },
+    getPendingApproval: function () { return getJson(API_BASE + '/remoteapp/pending-approval'); },
+    getSettings: function () { return getJson(API_BASE + '/settings'); },
+    getToken: function () { return getJson(API_BASE + '/token'); },
+
+    connectPeer: function (body) { return postJson(API_BASE + '/peers/connect', body); },
+    createRemoteApp: function (body) { return postJson(API_BASE + '/remoteapp', body); },
+    approveApp: function (id) { return postJson(API_BASE + '/remoteapp/' + id + '/approve'); },
+    rejectApp: function (id) { return postJson(API_BASE + '/remoteapp/' + id + '/reject'); },
+    acceptInbound: function (id) { return postJson(API_BASE + '/peers/inbound/' + id + '/accept'); },
+    rejectInbound: function (id) { return del(API_BASE + '/peers/inbound/' + id); },
+    removePeer: function (name) { return del(API_BASE + '/peers/' + encodeURIComponent(name)); },
+    deleteApp: function (id) { return del(API_BASE + '/remoteapp/' + id); },
+    getAppDetail: function (id) { return getJson(API_BASE + '/remoteapp/' + id + '/detail'); },
+    scaleApp: function (id, replicas) { return postJson(API_BASE + '/remoteapp/' + id + '/scale', { replicas: replicas }); },
+    updateAppSpec: function (id, spec) { return putJson(API_BASE + '/remoteapp/' + id + '/spec', { spec: spec }); },
+    updateSettings: function (data) { return postJson(API_BASE + '/settings', data); },
+
+    getLogs: function (tail) { return getJson(API_BASE + '/logs' + (tail ? '?tail=' + tail : '')); },
+    getAppLogs: function (appId, tail, order) {
+      return getJson(API_BASE + '/remoteapp/' + encodeURIComponent(appId) + '/logs?tail=' + (tail || 200) + '&order=' + (order || 'pod'));
+    },
+    proxyUrl: function (appId, port) {
+      return window.location.origin + API_BASE + '/remoteapp/' + appId + '/proxy/' + port;
+    },
+  };
+})();

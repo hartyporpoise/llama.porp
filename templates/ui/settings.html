@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block topbar_title %}Settings{% endblock %}
+{% block content %}
+<!-- PAGE: Settings (route: /settings) -->
+<section id="settings-page" data-page="settings">
+
+  <!-- SECTION: Connect credentials -->
+  <section id="settings-credentials" class="grid2 page-section" aria-label="Connect credentials">
+    <div class="card">
+      <div class="card-header"><h2>Connect Credentials</h2></div>
+      <div class="card-body">
+        <div class="section-label">Endpoint URL</div>
+        <div class="code-box">
+          <span class="code-val" id="settings-token-url">loading…</span>
+          <button type="button" class="btn-sm" onclick="window.Porpulsion.copyText('settings-token-url', this)">Copy</button>
+        </div>
+        <div class="section-label" style="margin-top:1rem;">Invite token (single-use)</div>
+        <div class="secret-box">
+          <span class="secret-val masked" id="settings-token-key" data-value="">••••••••••••••••••••••••••••••••</span>
+          <button type="button" class="eye-btn" onclick="window.Porpulsion.toggleSecret('settings-token-key', this)" title="Show/hide" aria-label="Toggle visibility"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 10s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="10" cy="10" r="2.5"/></svg></button>
+          <button type="button" class="btn-sm" onclick="window.Porpulsion.copySecret('settings-token-key', this)">Copy</button>
+        </div>
+        <div class="section-label" style="margin-top:1rem;">CA fingerprint</div>
+        <div class="secret-box">
+          <span class="secret-val masked" id="token-fp" data-value="" style="font-size:0.68rem;">••••••••••••••••••••••••••••••••••••••••••••••••</span>
+          <button type="button" class="eye-btn" onclick="window.Porpulsion.toggleSecret('token-fp', this)" title="Show/hide" aria-label="Toggle visibility"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 10s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="10" cy="10" r="2.5"/></svg></button>
+          <button type="button" class="btn-sm" onclick="window.Porpulsion.copySecret('token-fp', this)">Copy</button>
+        </div>
+        <div class="section-label" style="margin-top:1rem;">CA certificate (PEM)</div>
+        <div class="secret-box secret-box-block">
+          <span class="secret-val masked" id="token-pem" data-value="" style="font-size:0.68rem; font-family:'Roboto Mono','SF Mono','Consolas',monospace; white-space:pre-wrap; word-break:break-all; flex:1; line-height:1.5;">••••••••••••••••••••••••••••••••••••••••••••••••</span>
+          <button type="button" class="eye-btn" onclick="window.Porpulsion.toggleSecret('token-pem', this)" title="Show/hide" aria-label="Toggle visibility"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 10s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="10" cy="10" r="2.5"/></svg></button>
+          <button type="button" class="btn-sm btn-outline" onclick="window.Porpulsion.copySecret('token-pem', this)">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION: Agent -->
+    <div class="card">
+      <div class="card-header"><h2>Agent</h2></div>
+      <div class="card-body">
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-label">Name</div></div>
+          <span class="mono">{{ agent_name }}</span>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-label">mTLS endpoint</div></div>
+          <span class="mono text-sm" id="about-url">—</span>
+        </div>
+        <hr class="settings-divider">
+        <div class="section-label">Log level</div>
+        <div class="seg-ctrl" id="setting-log-level" role="group" aria-label="Log level">
+          <button type="button" data-val="DEBUG">Debug</button>
+          <button type="button" data-val="INFO" class="active">Info</button>
+          <button type="button" data-val="WARNING">Warn</button>
+          <button type="button" data-val="ERROR">Error</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION: Access control -->
+    <div class="card full">
+      <div class="card-header"><h2>Access Control</h2></div>
+      <div class="card-body">
+        <div class="section-label">Inbound workloads</div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">Accept inbound workloads</div>
+            <div class="toggle-desc">Allow peers to deploy RemoteApps on this cluster</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="setting-inbound-apps" aria-label="Accept inbound workloads">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="toggle-row" style="border-bottom:none;">
+          <div class="toggle-info">
+            <div class="toggle-label">Require manual approval</div>
+            <div class="toggle-desc">Queue inbound apps for approval before they are executed</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="setting-require-approval" aria-label="Require manual approval">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <hr class="settings-divider">
+        <div class="section-label">Tunnels</div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">Accept inbound tunnels</div>
+            <div class="toggle-desc">Allow peers to open HTTP proxy tunnels to pods on this cluster</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="setting-inbound-tunnels" aria-label="Accept inbound tunnels">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</section>
+{% endblock %}

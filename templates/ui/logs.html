@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block topbar_title %}Logs{% endblock %}
+{% block content %}
+<!-- PAGE: Logs (route: /logs) -->
+<section id="logs-page" data-page="logs">
+
+  <!-- SECTION: Workload logs -->
+  <section id="logs-viewer" class="page-section" aria-label="Workload logs">
+    <div class="card">
+      <div class="card-header">
+        <h2>Workload logs</h2>
+        <div class="logs-toolbar" role="toolbar" aria-label="Log options">
+          <label class="logs-tail-label" for="logs-workload">Workload:</label>
+          <select id="logs-workload" class="logs-tail-select" aria-label="Select workload">
+            <option value="">Select a workload…</option>
+          </select>
+          <label class="logs-tail-label" for="logs-tail">Tail:</label>
+          <select id="logs-tail" class="logs-tail-select" aria-label="Number of lines">
+            <option value="100">100</option>
+            <option value="200" selected>200</option>
+            <option value="500">500</option>
+          </select>
+          <label class="logs-tail-label" for="logs-view">View:</label>
+          <select id="logs-view" class="logs-tail-select" title="By pod or combined by time" aria-label="View by pod or time">
+            <option value="pod">By pod</option>
+            <option value="time">Combined (time)</option>
+          </select>
+          <button type="button" class="btn-sm" id="logs-refresh" aria-label="Refresh logs">Refresh</button>
+          <label class="logs-auto-refresh">
+            <input type="checkbox" id="logs-auto-refresh" aria-label="Auto-refresh every 3 seconds"> Auto-refresh (3s)
+          </label>
+        </div>
+      </div>
+      <div class="card-body no-pad">
+        <div class="logs-viewer-wrap">
+          <pre id="logs-content" class="logs-content" role="log" aria-live="polite">Select a workload to view its pod logs.</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</section>
+{% endblock %}
