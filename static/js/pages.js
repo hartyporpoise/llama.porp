@@ -1057,77 +1057,153 @@
     });
   })();
 
-  (function bindSettings() {
-    var logLevelCtrl = el('setting-log-level');
-    if (logLevelCtrl) {
-      logLevelCtrl.addEventListener('click', function (e) {
-        var btn = e.target.closest('button[data-val]');
-        if (!btn) return;
-        setSegVal('setting-log-level', btn);
-        saveSetting('log_level', btn.dataset.val);
+  // ── Custom number spinners ─────────────────────────────────────
+  function initNumSpinners() {
+    document.querySelectorAll('input[type="number"]:not(.num-spinner-init)').forEach(function (inp) {
+      inp.classList.add('num-spinner-init');
+      var min = inp.hasAttribute('min') ? parseFloat(inp.min) : -Infinity;
+      var max = inp.hasAttribute('max') ? parseFloat(inp.max) : Infinity;
+      var step = inp.step && parseFloat(inp.step) > 0 ? parseFloat(inp.step) : 1;
+      var wrap = document.createElement('div');
+      wrap.className = 'num-input-wrap';
+      inp.parentNode.insertBefore(wrap, inp);
+      var btnMinus = document.createElement('button');
+      btnMinus.type = 'button';
+      btnMinus.className = 'num-spin-btn';
+      btnMinus.setAttribute('aria-label', 'Decrease');
+      btnMinus.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 6h8"/></svg>';
+      var btnPlus = document.createElement('button');
+      btnPlus.type = 'button';
+      btnPlus.className = 'num-spin-btn';
+      btnPlus.setAttribute('aria-label', 'Increase');
+      btnPlus.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 2v8M2 6h8"/></svg>';
+      wrap.appendChild(btnMinus);
+      wrap.appendChild(inp);
+      wrap.appendChild(btnPlus);
+      function update(delta) {
+        var cur = inp.value === '' ? (min !== -Infinity ? min : 0) : parseFloat(inp.value);
+        var next = Math.round((cur + delta) / step) * step;
+        if (next < min) next = min;
+        if (next > max) next = max;
+        inp.value = next;
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      btnMinus.addEventListener('click', function () { update(-step); });
+      btnPlus.addEventListener('click', function () { update(step); });
+    });
+  }
+
+  // ── Custom dropdown (replaces <select> with JS-driven panel) ──
+  function initCustomDropdowns() {
+    document.querySelectorAll('select:not(.custom-dd-init)').forEach(function (sel) {
+      sel.classList.add('custom-dd-init');
+      var wrap = document.createElement('div');
+      wrap.className = 'custom-dd';
+      sel.parentNode.insertBefore(wrap, sel);
+      var trigger = document.createElement('button');
+      trigger.type = 'button';
+      trigger.className = 'custom-dd-trigger';
+      trigger.setAttribute('aria-haspopup', 'listbox');
+      trigger.setAttribute('aria-expanded', 'false');
+      var label = document.createElement('span');
+      label.className = 'custom-dd-label';
+      var chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      chevron.setAttribute('class', 'custom-dd-chevron');
+      chevron.setAttribute('width', '12');
+      chevron.setAttribute('height', '12');
+      chevron.setAttribute('viewBox', '0 0 12 12');
+      chevron.setAttribute('fill', 'none');
+      chevron.setAttribute('stroke', 'currentColor');
+      chevron.setAttribute('stroke-width', '1.8');
+      chevron.setAttribute('stroke-linecap', 'round');
+      chevron.setAttribute('stroke-linejoin', 'round');
+      chevron.setAttribute('aria-hidden', 'true');
+      var chevPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      chevPath.setAttribute('d', 'M2 4l4 4 4-4');
+      chevron.appendChild(chevPath);
+      trigger.appendChild(label);
+      trigger.appendChild(chevron);
+      var panel = document.createElement('div');
+      panel.className = 'custom-dd-panel';
+      panel.setAttribute('role', 'listbox');
+      panel.style.display = 'none';
+      wrap.appendChild(trigger);
+      wrap.appendChild(panel);
+      sel.style.display = 'none';
+      wrap.appendChild(sel);
+      function syncLabel() {
+        var opt = sel.options[sel.selectedIndex];
+        var isPlaceholder = opt && (opt.disabled || opt.value === '') && opt.hidden !== false;
+        if (isPlaceholder || !opt) {
+          label.textContent = '';
+          label.dataset.placeholder = opt ? opt.text : '';
+        } else {
+          label.textContent = opt.text;
+          label.dataset.placeholder = '';
+        }
+      }
+      function buildOptions() {
+        panel.innerHTML = '';
+        Array.from(sel.options).forEach(function (opt, idx) {
+          if (opt.disabled && opt.hidden) return;
+          var item = document.createElement('div');
+          item.className = 'custom-dd-option' + (idx === sel.selectedIndex ? ' selected' : '');
+          item.setAttribute('role', 'option');
+          item.setAttribute('aria-selected', idx === sel.selectedIndex ? 'true' : 'false');
+          item.dataset.idx = idx;
+          item.textContent = opt.text;
+          item.addEventListener('click', function () {
+            sel.selectedIndex = idx;
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            syncLabel();
+            closePanel();
+          });
+          panel.appendChild(item);
+        });
+      }
+      function openPanel() {
+        buildOptions();
+        panel.style.display = '';
+        trigger.setAttribute('aria-expanded', 'true');
+        trigger.classList.add('open');
+        requestAnimationFrame(function () {
+          var rect = wrap.getBoundingClientRect();
+          var spaceBelow = window.innerHeight - rect.bottom;
+          if (spaceBelow < panel.offsetHeight + 8 && rect.top > panel.offsetHeight + 8) {
+            panel.classList.add('flip-up');
+          } else {
+            panel.classList.remove('flip-up');
+          }
+        });
+      }
+      function closePanel() {
+        panel.style.display = 'none';
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.classList.remove('open');
+      }
+      trigger.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (panel.style.display === 'none') openPanel(); else closePanel();
       });
-    }
-
-    function bindChk(id, key) {
-      var e = el(id);
-      if (e) e.addEventListener('change', function () { saveSetting(key, e.checked); });
-    }
-    bindChk('setting-inbound-apps',         'allow_inbound_remoteapps');
-    bindChk('setting-require-approval',     'require_remoteapp_approval');
-    bindChk('setting-require-res-requests', 'require_resource_requests');
-    bindChk('setting-require-res-limits',   'require_resource_limits');
-    bindChk('setting-inbound-tunnels',      'allow_inbound_tunnels');
-
-    var filtersSaveBtn = el('setting-filters-save');
-    if (filtersSaveBtn) {
-      filtersSaveBtn.addEventListener('click', function () {
-        var payload = {
-          allowed_source_peers: (el('setting-allowed-peers') || {}).value || '',
-          allowed_images:       (el('setting-allowed-images') || {}).value || '',
-          blocked_images:       (el('setting-blocked-images') || {}).value || '',
-        };
-        P.updateSettings(payload).then(function () { toast('Filters saved', 'ok'); }).catch(function (err) { toast(err.message, 'error'); });
+      document.addEventListener('click', function (e) {
+        if (!wrap.contains(e.target)) closePanel();
+      }, true);
+      trigger.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); if (panel.style.display === 'none') openPanel(); }
+        if (e.key === 'ArrowUp') { e.preventDefault(); if (panel.style.display === 'none') openPanel(); }
+        if (e.key === 'Escape') closePanel();
       });
-    }
-
-    var quotasSaveBtn = el('setting-quotas-save');
-    if (quotasSaveBtn) {
-      quotasSaveBtn.addEventListener('click', function () {
-        var payload = {
-          max_cpu_request_per_pod:    (el('setting-max-cpu-req') || {}).value || '',
-          max_cpu_limit_per_pod:      (el('setting-max-cpu-lim') || {}).value || '',
-          max_memory_request_per_pod: (el('setting-max-mem-req') || {}).value || '',
-          max_memory_limit_per_pod:   (el('setting-max-mem-lim') || {}).value || '',
-          max_replicas_per_app:       parseInt((el('setting-max-replicas') || {}).value || '0', 10) || 0,
-          max_total_deployments:      parseInt((el('setting-max-total-deploys') || {}).value || '0', 10) || 0,
-          max_total_pods:             parseInt((el('setting-max-total-pods') || {}).value || '0', 10) || 0,
-          max_total_cpu_requests:     (el('setting-max-total-cpu') || {}).value || '',
-          max_total_memory_requests:  (el('setting-max-total-mem') || {}).value || '',
-        };
-        P.updateSettings(payload).then(function () { toast('Quotas saved', 'ok'); }).catch(function (err) { toast(err.message, 'error'); });
-      });
-    }
-
-    var tunnelsSaveBtn = el('setting-tunnels-save');
-    if (tunnelsSaveBtn) {
-      tunnelsSaveBtn.addEventListener('click', function () {
-        var payload = {
-          allowed_tunnel_peers: _getTunnelAllowedValue(),
-        };
-        P.updateSettings(payload).then(function () { toast('Tunnel settings saved', 'ok'); }).catch(function (err) { toast(err.message, 'error'); });
-      });
-    }
-
-  window.PorpulsionPages = {
-    refresh: refresh,
-    loadToken: loadToken,
-    openAppModal: openAppModal,
-    closeAppModal: closeAppModal,
-    deleteApp: deleteApp,
-    removePeer: removePeer,
-    initDeploySpecEditor: initDeploySpecEditor,
-    parseSimpleYaml: parseSimpleYaml
-  };
+      sel.addEventListener('change', function () { syncLabel(); buildOptions(); });
+      if (window.MutationObserver) {
+        var mo = new MutationObserver(function () { syncLabel(); if (panel.style.display !== 'none') buildOptions(); });
+        mo.observe(sel, { childList: true, subtree: false });
+      }
+      syncLabel();
+      if (sel.id) { trigger.setAttribute('aria-controls', 'dd-panel-' + sel.id); panel.id = 'dd-panel-' + sel.id; }
+      if (sel.hasAttribute('aria-label')) trigger.setAttribute('aria-label', sel.getAttribute('aria-label'));
+    });
+  }
 
   function parseSimpleYaml(text) {
     var lines = text.split('\n');
@@ -1202,165 +1278,77 @@
     return parseBlock(0, 0).obj;
   }
 
-  // ── Custom number spinners ─────────────────────────────────────
-  function initNumSpinners() {
-    document.querySelectorAll('input[type="number"]:not(.num-spinner-init)').forEach(function (inp) {
-      inp.classList.add('num-spinner-init');
-      var min = inp.hasAttribute('min') ? parseFloat(inp.min) : -Infinity;
-      var max = inp.hasAttribute('max') ? parseFloat(inp.max) : Infinity;
-      var step = inp.step && parseFloat(inp.step) > 0 ? parseFloat(inp.step) : 1;
-      var wrap = document.createElement('div');
-      wrap.className = 'num-input-wrap';
-      inp.parentNode.insertBefore(wrap, inp);
-      var btnMinus = document.createElement('button');
-      btnMinus.type = 'button';
-      btnMinus.className = 'num-spin-btn';
-      btnMinus.setAttribute('aria-label', 'Decrease');
-      btnMinus.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 6h8"/></svg>';
-      var btnPlus = document.createElement('button');
-      btnPlus.type = 'button';
-      btnPlus.className = 'num-spin-btn';
-      btnPlus.setAttribute('aria-label', 'Increase');
-      btnPlus.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 2v8M2 6h8"/></svg>';
-      wrap.appendChild(btnMinus);
-      wrap.appendChild(inp);
-      wrap.appendChild(btnPlus);
-      function update(delta) {
-        var cur = inp.value === '' ? (min !== -Infinity ? min : 0) : parseFloat(inp.value);
-        var next = Math.round((cur + delta) / step) * step;
-        if (next < min) next = min;
-        if (next > max) next = max;
-        inp.value = next;
-        inp.dispatchEvent(new Event('input', { bubbles: true }));
-        inp.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-      btnMinus.addEventListener('click', function () { update(-step); });
-      btnPlus.addEventListener('click', function () { update(step); });
-    });
-  }
-
-  // ── Custom dropdown (replaces <select> with JS-driven panel) ──
-  function initCustomDropdowns() {
-    document.querySelectorAll('select:not(.custom-dd-init)').forEach(function (sel) {
-      sel.classList.add('custom-dd-init');
-      // Build wrapper
-      var wrap = document.createElement('div');
-      wrap.className = 'custom-dd';
-      sel.parentNode.insertBefore(wrap, sel);
-      // Trigger (visible button)
-      var trigger = document.createElement('button');
-      trigger.type = 'button';
-      trigger.className = 'custom-dd-trigger';
-      trigger.setAttribute('aria-haspopup', 'listbox');
-      trigger.setAttribute('aria-expanded', 'false');
-      // Label span + chevron
-      var label = document.createElement('span');
-      label.className = 'custom-dd-label';
-      var chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      chevron.setAttribute('class', 'custom-dd-chevron');
-      chevron.setAttribute('width', '12');
-      chevron.setAttribute('height', '12');
-      chevron.setAttribute('viewBox', '0 0 12 12');
-      chevron.setAttribute('fill', 'none');
-      chevron.setAttribute('stroke', 'currentColor');
-      chevron.setAttribute('stroke-width', '1.8');
-      chevron.setAttribute('stroke-linecap', 'round');
-      chevron.setAttribute('stroke-linejoin', 'round');
-      chevron.setAttribute('aria-hidden', 'true');
-      var chevPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      chevPath.setAttribute('d', 'M2 4l4 4 4-4');
-      chevron.appendChild(chevPath);
-      trigger.appendChild(label);
-      trigger.appendChild(chevron);
-      // Panel
-      var panel = document.createElement('div');
-      panel.className = 'custom-dd-panel';
-      panel.setAttribute('role', 'listbox');
-      panel.style.display = 'none';
-      wrap.appendChild(trigger);
-      wrap.appendChild(panel);
-      // Hide original select but keep it for form value
-      sel.style.display = 'none';
-      wrap.appendChild(sel);
-
-      function syncLabel() {
-        var opt = sel.options[sel.selectedIndex];
-        var isPlaceholder = opt && (opt.disabled || opt.value === '') && opt.hidden !== false;
-        if (isPlaceholder || !opt) {
-          label.textContent = '';
-          label.dataset.placeholder = opt ? opt.text : '';
-        } else {
-          label.textContent = opt.text;
-          label.dataset.placeholder = '';
-        }
-      }
-      function buildOptions() {
-        panel.innerHTML = '';
-        Array.from(sel.options).forEach(function (opt, idx) {
-          // Skip placeholder options (disabled + hidden)
-          if (opt.disabled && opt.hidden) return;
-          var item = document.createElement('div');
-          item.className = 'custom-dd-option' + (idx === sel.selectedIndex ? ' selected' : '');
-          item.setAttribute('role', 'option');
-          item.setAttribute('aria-selected', idx === sel.selectedIndex ? 'true' : 'false');
-          item.dataset.idx = idx;
-          item.textContent = opt.text;
-          item.addEventListener('click', function () {
-            sel.selectedIndex = idx;
-            sel.dispatchEvent(new Event('change', { bubbles: true }));
-            syncLabel();
-            closePanel();
-          });
-          panel.appendChild(item);
-        });
-      }
-      function openPanel() {
-        buildOptions();
-        panel.style.display = '';
-        trigger.setAttribute('aria-expanded', 'true');
-        trigger.classList.add('open');
-        // Position check (flip up if near bottom)
-        requestAnimationFrame(function () {
-          var rect = wrap.getBoundingClientRect();
-          var spaceBelow = window.innerHeight - rect.bottom;
-          if (spaceBelow < panel.offsetHeight + 8 && rect.top > panel.offsetHeight + 8) {
-            panel.classList.add('flip-up');
-          } else {
-            panel.classList.remove('flip-up');
-          }
-        });
-      }
-      function closePanel() {
-        panel.style.display = 'none';
-        trigger.setAttribute('aria-expanded', 'false');
-        trigger.classList.remove('open');
-      }
-      trigger.addEventListener('click', function (e) {
-        e.stopPropagation();
-        if (panel.style.display === 'none') openPanel(); else closePanel();
+  (function bindSettings() {
+    var logLevelCtrl = el('setting-log-level');
+    if (logLevelCtrl) {
+      logLevelCtrl.addEventListener('click', function (e) {
+        var btn = e.target.closest('button[data-val]');
+        if (!btn) return;
+        setSegVal('setting-log-level', btn);
+        saveSetting('log_level', btn.dataset.val);
       });
-      document.addEventListener('click', function (e) {
-        if (!wrap.contains(e.target)) closePanel();
-      }, true);
-      // Keyboard navigation
-      trigger.addEventListener('keydown', function (e) {
-        if (e.key === 'ArrowDown') { e.preventDefault(); if (panel.style.display === 'none') openPanel(); }
-        if (e.key === 'ArrowUp') { e.preventDefault(); if (panel.style.display === 'none') openPanel(); }
-        if (e.key === 'Escape') closePanel();
+    }
+
+    function bindChk(id, key) {
+      var e = el(id);
+      if (e) e.addEventListener('change', function () { saveSetting(key, e.checked); });
+    }
+    bindChk('setting-inbound-apps',         'allow_inbound_remoteapps');
+    bindChk('setting-require-approval',     'require_remoteapp_approval');
+    bindChk('setting-require-res-requests', 'require_resource_requests');
+    bindChk('setting-require-res-limits',   'require_resource_limits');
+    bindChk('setting-inbound-tunnels',      'allow_inbound_tunnels');
+
+    var filtersSaveBtn = el('setting-filters-save');
+    if (filtersSaveBtn) {
+      filtersSaveBtn.addEventListener('click', function () {
+        var payload = {
+          allowed_source_peers: (el('setting-allowed-peers') || {}).value || '',
+          allowed_images:       (el('setting-allowed-images') || {}).value || '',
+          blocked_images:       (el('setting-blocked-images') || {}).value || '',
+        };
+        P.updateSettings(payload).then(function () { toast('Filters saved', 'ok'); }).catch(function (err) { toast(err.message, 'error'); });
       });
-      // Keep in sync if select changes externally (e.g. JS sets selectedIndex)
-      sel.addEventListener('change', function () { syncLabel(); buildOptions(); });
-      // Observe option mutations (dynamic population via JS)
-      if (window.MutationObserver) {
-        var mo = new MutationObserver(function () { syncLabel(); if (panel.style.display !== 'none') buildOptions(); });
-        mo.observe(sel, { childList: true, subtree: false });
-      }
-      syncLabel();
-      // Copy width/style from select
-      if (sel.id) { trigger.setAttribute('aria-controls', 'dd-panel-' + sel.id); panel.id = 'dd-panel-' + sel.id; }
-      if (sel.hasAttribute('aria-label')) trigger.setAttribute('aria-label', sel.getAttribute('aria-label'));
-    });
-  }
+    }
+
+    var quotasSaveBtn = el('setting-quotas-save');
+    if (quotasSaveBtn) {
+      quotasSaveBtn.addEventListener('click', function () {
+        var payload = {
+          max_cpu_request_per_pod:    (el('setting-max-cpu-req') || {}).value || '',
+          max_cpu_limit_per_pod:      (el('setting-max-cpu-lim') || {}).value || '',
+          max_memory_request_per_pod: (el('setting-max-mem-req') || {}).value || '',
+          max_memory_limit_per_pod:   (el('setting-max-mem-lim') || {}).value || '',
+          max_replicas_per_app:       parseInt((el('setting-max-replicas') || {}).value || '0', 10) || 0,
+          max_total_deployments:      parseInt((el('setting-max-total-deploys') || {}).value || '0', 10) || 0,
+          max_total_pods:             parseInt((el('setting-max-total-pods') || {}).value || '0', 10) || 0,
+          max_total_cpu_requests:     (el('setting-max-total-cpu') || {}).value || '',
+          max_total_memory_requests:  (el('setting-max-total-mem') || {}).value || '',
+        };
+        P.updateSettings(payload).then(function () { toast('Quotas saved', 'ok'); }).catch(function (err) { toast(err.message, 'error'); });
+      });
+    }
+
+    var tunnelsSaveBtn = el('setting-tunnels-save');
+    if (tunnelsSaveBtn) {
+      tunnelsSaveBtn.addEventListener('click', function () {
+        var payload = {
+          allowed_tunnel_peers: _getTunnelAllowedValue(),
+        };
+        P.updateSettings(payload).then(function () { toast('Tunnel settings saved', 'ok'); }).catch(function (err) { toast(err.message, 'error'); });
+      });
+    }
+
+  window.PorpulsionPages = {
+    refresh: refresh,
+    loadToken: loadToken,
+    openAppModal: openAppModal,
+    closeAppModal: closeAppModal,
+    deleteApp: deleteApp,
+    removePeer: removePeer,
+    initDeploySpecEditor: initDeploySpecEditor,
+    parseSimpleYaml: parseSimpleYaml
+  };
 
   refresh();
   initDeploySpecEditor();
