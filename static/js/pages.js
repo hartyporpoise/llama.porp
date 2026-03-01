@@ -696,11 +696,7 @@
       var yaml = yamlEl ? yamlEl.value : '';
       if (!name) return;
       if (!yaml.trim()) { toast('Spec cannot be empty', 'error'); return; }
-      var spec;
-      try {
-        spec = parseSimpleYaml(yaml);
-      } catch (err) { toast('Invalid YAML: ' + err.message, 'error'); return; }
-      if (!spec.image) { toast('Spec must include an "image" field', 'error'); return; }
+      if (yaml.indexOf('image:') === -1) { toast('Spec must include an "image" field', 'error'); return; }
       var targetPeerEl = el('app-target-peer');
       var targetPeer = targetPeerEl ? targetPeerEl.value : '';
       // If peer selector exists and has choices, require a selection
@@ -708,7 +704,7 @@
         var peerOpts = Array.from(targetPeerEl.options).filter(function (o) { return !o.disabled && !o.hidden && o.value; });
         if (peerOpts.length > 0) { toast('Select a target peer', 'error'); return; }
       }
-      var payload = { name: name, spec: spec };
+      var payload = { name: name, spec_yaml: yaml };
       if (targetPeer) payload.target_peer = targetPeer;
       P.createRemoteApp(payload).then(function () {
         toast('Deployed ' + name, 'ok');
@@ -946,13 +942,11 @@
           var yamlStr = window.PorpulsionVscodeEditor
             ? window.PorpulsionVscodeEditor.getModalSpecEditorValue('modal-spec-editor-host', 'modal-spec-textarea')
             : (el('modal-spec-textarea') || {}).value || '';
-          var parsedSpec;
-          try { parsedSpec = parseSimpleYaml(yamlStr); }
-          catch (err) { toast('Invalid YAML: ' + err.message, 'error'); return; }
-          if (!parsedSpec.image) { toast('Spec must include an image field', 'error'); return; }
+          if (!yamlStr.trim()) { toast('Spec cannot be empty', 'error'); return; }
+          if (yamlStr.indexOf('image:') === -1) { toast('Spec must include an image field', 'error'); return; }
           specSaveBtn.disabled = true;
           specSaveBtn.textContent = 'Saving…';
-          P.updateAppSpec(app.id, parsedSpec).then(function () {
+          P.updateAppSpec(app.id, yamlStr).then(function () {
             toast('Spec updated', 'ok');
             specSaveBtn.disabled = false;
             specSaveBtn.textContent = 'Save & apply';
@@ -1243,76 +1237,6 @@
     });
   }
 
-  function parseSimpleYaml(text) {
-    var lines = text.split('\n');
-    function parseBlock(startIdx, minIndent) {
-      var obj = {};
-      var i = startIdx;
-      while (i < lines.length) {
-        var line = lines[i];
-        var trimmed = line.trim();
-        if (!trimmed || trimmed.charAt(0) === '#') { i++; continue; }
-        var indent = line.search(/\S/);
-        if (indent < minIndent) break;
-        var idx = trimmed.indexOf(':');
-        if (idx === -1) { i++; continue; }
-        var key = trimmed.slice(0, idx).trim();
-        var val = trimmed.slice(idx + 1).trim();
-        if (val) {
-          if (/^\d+$/.test(val)) val = parseInt(val, 10);
-          else if (val === 'true') val = true;
-          else if (val === 'false') val = false;
-          else if (val.charAt(0) === '[') {
-            try { val = JSON.parse(val); } catch (e) { /* leave as string */ }
-          }
-          obj[key] = val;
-          i++;
-        } else {
-          i++;
-          var j = i;
-          while (j < lines.length && !lines[j].trim()) j++;
-          if (j >= lines.length) { obj[key] = {}; continue; }
-          var nextTrimmed = lines[j].trim();
-          var nextIndent = lines[j].search(/\S/);
-          if (nextIndent <= indent) { obj[key] = {}; continue; }
-          if (nextTrimmed.charAt(0) === '-') {
-            var listItems = [];
-            while (i < lines.length) {
-              var itemLine = lines[i];
-              var itemTrimmed = itemLine.trim();
-              if (!itemTrimmed || itemTrimmed.charAt(0) === '#') { i++; continue; }
-              var itemIndent = itemLine.search(/\S/);
-              if (itemIndent <= indent) break;
-              if (itemTrimmed.charAt(0) === '-') {
-                var baseIndent = itemIndent;
-                i++;
-                // Skip blank lines to find actual content indent
-                var ci = i;
-                while (ci < lines.length && !lines[ci].trim()) ci++;
-                var itemObj;
-                if (ci < lines.length && lines[ci].search(/\S/) > baseIndent) {
-                  var itemSub = parseBlock(i, baseIndent + 1);
-                  itemObj = itemSub.obj;
-                  i = itemSub.nextIdx;
-                } else {
-                  itemObj = {};
-                }
-                listItems.push(itemObj);
-              } else i++;
-            }
-            obj[key] = listItems;
-          } else {
-            var sub = parseBlock(i, nextIndent);
-            obj[key] = sub.obj;
-            i = sub.nextIdx;
-          }
-        }
-      }
-      return { obj: obj, nextIdx: i };
-    }
-    return parseBlock(0, 0).obj;
-  }
-
   (function bindSettings() {
     var logLevelCtrl = el('setting-log-level');
     if (logLevelCtrl) {
@@ -1381,8 +1305,7 @@
     closeAppModal: closeAppModal,
     deleteApp: deleteApp,
     removePeer: removePeer,
-    initDeploySpecEditor: initDeploySpecEditor,
-    parseSimpleYaml: parseSimpleYaml
+    initDeploySpecEditor: initDeploySpecEditor
   };
 
   refresh();

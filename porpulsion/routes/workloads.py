@@ -177,6 +177,12 @@ def create_remoteapp():
     data = request.json
     if not data or "name" not in data:
         return jsonify({"error": "name is required"}), 400
+    if "spec_yaml" in data:
+        import yaml as _yaml
+        try:
+            data["spec"] = _yaml.safe_load(data["spec_yaml"]) or {}
+        except Exception as e:
+            return jsonify({"error": f"invalid YAML: {e}"}), 400
     if not state.peers:
         return jsonify({"error": "no peers connected"}), 503
 
@@ -386,6 +392,12 @@ def remoteapp_logs(app_id):
 @bp.route("/remoteapp/<app_id>/spec", methods=["PUT"])
 def update_remoteapp_spec(app_id):
     data = request.json or {}
+    if "spec_yaml" in data:
+        import yaml as _yaml
+        try:
+            data["spec"] = _yaml.safe_load(data["spec_yaml"]) or {}
+        except Exception as e:
+            return jsonify({"error": f"invalid YAML: {e}"}), 400
     new_spec = data.get("spec")
     if new_spec is None:
         return jsonify({"error": "spec is required"}), 400

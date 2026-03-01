@@ -73,7 +73,7 @@
     deleteApp: function (id) { return del(API_BASE + '/remoteapp/' + id); },
     getAppDetail: function (id) { return getJson(API_BASE + '/remoteapp/' + id + '/detail'); },
     scaleApp: function (id, replicas) { return postJson(API_BASE + '/remoteapp/' + id + '/scale', { replicas: replicas }); },
-    updateAppSpec: function (id, spec) { return putJson(API_BASE + '/remoteapp/' + id + '/spec', { spec: spec }); },
+    updateAppSpec: function (id, specYaml) { return putJson(API_BASE + '/remoteapp/' + id + '/spec', { spec_yaml: specYaml }); },
     updateSettings: function (data) { return postJson(API_BASE + '/settings', data); },
 
     getNotifications: function () { return getJson(API_BASE + '/notifications'); },
